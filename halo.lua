@@ -29,7 +29,6 @@
 
 local inspect = require('util').inspect;
 local REGISTRY = {};
-local FNIDX = {};
 local CONSTRUCTOR_TMPL = [==[
 local function Constructor(...)
     local self = setmetatable(%s, CLASS );
@@ -64,11 +63,13 @@ end
 
 
 -- inspect hook
-local function INSPECT_HOOK( value, valueType, valueFor, key )
+local function INSPECT_HOOK( value, valueType, valueFor, key, FNIDX )
     -- should add function-id to FNIDX table 
     if valueFor == 'value' and valueType == 'function' then
         local id = getFunctionId( value );
-        FNIDX[id] = value;
+        
+        rawset( FNIDX, id, value );
+        
         return ('FNIDX[%q]'):format( id ), true;
     end
     
@@ -140,11 +141,20 @@ local function inherits( ... )
         },
         props = {},
         static = {},
-        super = {}
+        super = {},
+        -- set constructor environments
+        env = {
+            error = error,
+            setmetatable = setmetatable,
+            FNIDX = {}
+        }
     };
     local inheritance = {};
     local super = defaultConstructor.super;
     local module, class, classId, constructor, i;
+    
+    -- set constructor.class to environments
+    defaultConstructor.env.CLASS = defaultConstructor.class;
     
     -- loading modules
     for i, module in ipairs({...}) do
@@ -161,9 +171,11 @@ local function inherits( ... )
             constructor.module = module;
             rawset( super, #super + 1, constructor.class.__index.init );
             rawset( inheritance, module, true );
+            -- copy class, props, static, env.FNIDX
             deepCopy( defaultConstructor.class, constructor.class );
             deepCopy( defaultConstructor.props, constructor.props );
             deepCopy( defaultConstructor.static, constructor.static );
+            deepCopy( defaultConstructor.env.FNIDX, constructor.env.FNIDX );
         end
     end
     
@@ -175,7 +187,7 @@ local function buildConstructor( constructor )
     local ok, class, classId;
     
     --  create constructor template
-    INSPECT_OPTS.udata = constructor;
+    INSPECT_OPTS.udata = constructor.env.FNIDX;
     class = CONSTRUCTOR_TMPL:format(
         inspect( constructor.props, INSPECT_OPTS ),
         inspect( constructor.super, INSPECT_OPTS ),
@@ -296,14 +308,6 @@ local function class( ... )
     classIndex = {
         [tostring(hooks[1])] = metatable,
         [tostring(hooks[2])] = method
-    };
-    
-    -- set constructor environments
-    constructor.env = {
-        error = error,
-        setmetatable = setmetatable,
-        CLASS = constructor.class,
-        FNIDX = FNIDX,
     };
     
     return unpack( hooks );
