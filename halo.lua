@@ -34,8 +34,7 @@ local CONSTRUCTOR_TMPL = [==[
 local function Constructor(...)
     local self = setmetatable(%s, CLASS );
     
-    self:init(%s, ... );
-    return self;
+    return self, self:init(%s, ... );
 end
 
 local function newindex()
