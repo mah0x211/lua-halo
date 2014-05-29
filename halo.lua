@@ -109,12 +109,12 @@ local function mergeCopy( class, metatable )
         -- metamethods
         if k:find( '^__[^_]' ) then
             if t == 'table' then
-                rawset( meta, k, deepCopy( meta[k], v ) );
+                rawset( meta, k, deepCopy( rawget( meta, k ), v ) );
             else
                 rawset( meta, k, v );
             end
         elseif t == 'table' then
-            rawset( prop, k, deepCopy( prop[k], v ) );
+            rawset( prop, k, deepCopy( rawget( prop, k ), v ) );
         else
             rawset( prop, k, v );
         end
@@ -235,12 +235,12 @@ local function buildConstructor( constructor )
     
     -- remove old registry
     if constructor.id then
-        REGISTRY[constructor.id] = nil;
+        rawset( REGISTRY, constructor.id, nil );
     end
     -- add new registry
     classId = getClassId( class );
     constructor.id = classId;
-    REGISTRY[classId] = constructor;
+    rawset( REGISTRY, classId, constructor );
     
     return class;
 end
@@ -282,7 +282,7 @@ local function class( ... )
     -- index hooks(closure)
     local classIndex = {};
     local newIndex = function( tbl, key, val )
-        tbl = classIndex[tostring(tbl)];
+        tbl = rawget( classIndex, tostring(tbl) );
         
         -- metamethod and class method
         if tbl == metatable then
@@ -317,7 +317,7 @@ local function class( ... )
     
     -- return constructor
     local getIndex = function( tbl, key )
-        tbl = classIndex[tostring(tbl)];
+        tbl = rawget( classIndex, tostring(tbl) );
         if tbl == metatable then
             if key == 'constructor' then
                 return buildConstructor( constructor );
