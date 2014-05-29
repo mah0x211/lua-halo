@@ -28,6 +28,7 @@
 --]]
 
 local inspect = require('util').inspect;
+local require = require;
 local REGISTRY = {};
 local CONSTRUCTOR_TMPL = [==[
 local function Constructor(...)
@@ -131,6 +132,32 @@ local function init( self, ... )
 end
 
 
+local function import( module )
+    if not package.loaded[module] then
+        -- load module
+        local class = require( module );
+        -- check registry index
+        local constructor = rawget( REGISTRY, getClassId( class ) );
+        
+        -- found class constructor
+        if constructor then
+            -- add module name
+            rawset( constructor, 'module', module );
+        end
+        
+        return class;
+    end
+    
+    return require( module );
+end
+
+
+local function getClassConstructor( module )
+    local class = import( module );
+    return rawget( REGISTRY, getClassId( class ) );
+end
+
+
 local function inherits( ... )
     local defaultConstructor = { 
         class = {
@@ -151,24 +178,20 @@ local function inherits( ... )
     };
     local inheritance = {};
     local super = defaultConstructor.super;
-    local module, class, classId, constructor, i;
+    local module, constructor, i, _;
     
     -- set constructor.class to environments
     defaultConstructor.env.CLASS = defaultConstructor.class;
     
     -- loading modules
     for i, module in ipairs({...}) do
-        if not inheritance[module] then
-            -- load module
-            class = require( module );
-            -- check registry index
-            classId = getClassId( class );
-            constructor = REGISTRY[classId];
+        if not rawget( inheritance, module ) then
+            constructor = getClassConstructor( module );
             -- this class is not halo class
             if not constructor then
                 error( ('inherit: %q is not halo class'):format( module ) );
             end
-            constructor.module = module;
+            
             rawset( super, #super + 1, constructor.class.__index.init );
             rawset( inheritance, module, true );
             -- copy class, props, static, env.FNIDX
@@ -241,7 +264,7 @@ end
 
 -- class, property, method
 local function class( ... )
-    -- import inherits
+    -- create constructor
     local constructor = inherits( ... );
     local metatable = constructor.class;
     local method = constructor.class.__index;
@@ -316,6 +339,7 @@ end
 
 return {
     class = class,
+    import = import,
     printRegistry = printRegistry
 };
 
