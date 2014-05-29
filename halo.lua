@@ -100,12 +100,14 @@ end
 
 
 local function mergeCopy( dest, obj )
-    local k,v;
+    local k,v,tbl;
     
     for k,v in pairs( obj ) do
         if not rawget( dest, k ) then
             if type( v ) == 'table' then
-                rawset( dest, k, mergeCopy( rawget( dest, k ), v ) );
+                tbl = {};
+                mergeCopy( tbl, v );
+                rawset( dest, k, tbl );
             else
                 rawset( dest, k, v );
             end
