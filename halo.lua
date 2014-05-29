@@ -99,24 +99,16 @@ local function deepCopy( dest, obj )
 end
 
 
-local function mergeCopy( class, metatable )
-    local meta = class.metatable;
-    local prop = class.property;
-    local k,v,t;
+local function mergeCopy( dest, obj )
+    local k,v;
     
-    for k,v in pairs( metatable ) do
-        t = type( v );
-        -- metamethods
-        if k:find( '^__[^_]' ) then
-            if t == 'table' then
-                rawset( meta, k, deepCopy( rawget( meta, k ), v ) );
+    for k,v in pairs( obj ) do
+        if not rawget( dest, k ) then
+            if type( v ) == 'table' then
+                rawset( dest, k, mergeCopy( rawget( dest, k ), v ) );
             else
-                rawset( meta, k, v );
+                rawset( dest, k, v );
             end
-        elseif t == 'table' then
-            rawset( prop, k, deepCopy( rawget( prop, k ), v ) );
-        else
-            rawset( prop, k, v );
         end
     end
 end
@@ -269,14 +261,18 @@ local function class( ... )
     local constructor = inherits( ... );
     local metatable = constructor.class;
     local method = constructor.class.__index;
+    local defaultProps = constructor.props;
     
     -- property register function
-    local setProperty = function( props )
+    local setProperty = function( props, replace )
         if type( props ) ~= 'table' then
             error( 'property must be type of table' );
+        -- merge property table
+        elseif not replace then
+            mergeCopy( props, defaultProps );
         end
-        -- overwrite property table
-        constructor.props = props;
+        
+        rawset( constructor, 'props', props ); 
     end
     
     -- index hooks(closure)
