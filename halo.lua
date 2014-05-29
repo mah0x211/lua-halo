@@ -120,7 +120,7 @@ end
 
 
 --- initializer
-local function init( self, ... )
+local function init()
 end
 
 
@@ -161,7 +161,7 @@ local function inherits( ... )
         },
         props = {},
         static = {},
-        super = {},
+        bases = {},
         -- set constructor environments
         env = {
             error = error,
@@ -170,7 +170,7 @@ local function inherits( ... )
         }
     };
     local inheritance = {};
-    local super = defaultConstructor.super;
+    local bases = defaultConstructor.bases;
     local module, constructor, i, _;
     
     -- set constructor.class to environments
@@ -185,7 +185,7 @@ local function inherits( ... )
                 error( ('inherit: %q is not halo class'):format( module ) );
             end
             
-            rawset( super, #super + 1, constructor.class.__index.init );
+            rawset( bases, #bases + 1, constructor.class.__index.init );
             rawset( inheritance, module, true );
             -- copy class, props, static, env.FNIDX
             deepCopy( defaultConstructor.class, constructor.class );
@@ -206,7 +206,7 @@ local function buildConstructor( constructor )
     INSPECT_OPTS.udata = constructor.env.FNIDX;
     class = CONSTRUCTOR_TMPL:format(
         inspect( constructor.props, INSPECT_OPTS ),
-        inspect( constructor.super, INSPECT_OPTS ),
+        inspect( constructor.bases, INSPECT_OPTS ),
         inspect( constructor.static, INSPECT_OPTS )
     );
     INSPECT_OPTS.udata = nil;
