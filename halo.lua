@@ -150,7 +150,8 @@ local function import( module )
     
     return require( module );
 end
-
+-- swap require with import
+_G.require = import;
 
 local function getClassConstructor( module )
     local class = import( module );
