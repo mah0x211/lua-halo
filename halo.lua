@@ -32,24 +32,15 @@ local require = require;
 local REGISTRY = {};
 local CONSTRUCTOR_TMPL = [==[
 local function Constructor(...)
-    local self = setmetatable(%s, CLASS );
+    local self = setmetatable( %s, CLASS );
     
-    return self, self:init(%s, ... );
+    return self, self:init( ... );
 end
 
-local function newindex()
-    error( 'attempt to change class table' );
-end
+local EXPORTS = %s;
+EXPORTS.new = Constructor;
 
-local exports = %s;
-exports.new = Constructor;
-
-return exports;
---[[setmetatable({},{
-    __index = exports,
-    __newindex = newindex
-});
---]]
+return EXPORTS;
 
 ]==];
 
@@ -75,6 +66,10 @@ local function INSPECT_HOOK( value, valueType, valueFor, key, FNIDX )
     
     return value;
 end
+local INSPECT_OPTS_LOCAL = {
+    padding = 0,
+    callback = INSPECT_HOOK
+};
 local INSPECT_OPTS = {
     padding = 4,
     callback = INSPECT_HOOK
@@ -116,6 +111,29 @@ local function mergeCopy( dest, obj )
             mergeCopy( destVal, v );
         end
     end
+end
+
+
+-- protect table
+local function attemptNewIndex()
+    error( 'attempt to change the super table' );
+end
+
+local function protectTable( target )
+    local tbl = deepCopy( nil, target );
+    local k,v;
+    
+    for k,v in pairs( tbl ) do
+        tbl[k] = setmetatable( {}, {
+            __newindex = attemptNewIndex,
+            __index = v
+        })
+    end
+    
+    return setmetatable( {}, {
+        __newindex = attemptNewIndex,
+        __index = tbl
+    })
 end
 
 
@@ -166,16 +184,17 @@ local function inherits( ... )
         },
         props = {},
         static = {},
-        bases = {},
+        -- method table of super classes
+        super = {},
         -- set constructor environments
         env = {
             error = error,
             setmetatable = setmetatable,
-            FNIDX = {}
+            FNIDX = {},
         }
     };
     local inheritance = {};
-    local bases = defaultConstructor.bases;
+    local super = defaultConstructor.super;
     local module, constructor, i, _;
     
     -- set constructor.class to environments
@@ -190,9 +209,9 @@ local function inherits( ... )
                 error( ('inherit: %q is not halo class'):format( module ) );
             end
             
-            rawset( bases, #bases + 1, constructor.class.__index.init );
             rawset( inheritance, module, true );
-            -- copy class, props, static, env.FNIDX
+            -- copy super, class, props, static, env.FNIDX
+            rawset( super, module, constructor.class.__index );
             deepCopy( defaultConstructor.class, constructor.class );
             deepCopy( defaultConstructor.props, constructor.props );
             deepCopy( defaultConstructor.static, constructor.static );
@@ -209,12 +228,13 @@ local function buildConstructor( constructor )
     
     --  create constructor template
     INSPECT_OPTS.udata = constructor.env.FNIDX;
+    INSPECT_OPTS_LOCAL.udata = INSPECT_OPTS.udata;
     class = CONSTRUCTOR_TMPL:format(
         inspect( constructor.props, INSPECT_OPTS ),
-        inspect( constructor.bases, INSPECT_OPTS ),
-        inspect( constructor.static, INSPECT_OPTS )
+        inspect( constructor.static, INSPECT_OPTS_LOCAL )
     );
     INSPECT_OPTS.udata = nil;
+    INSPECT_OPTS_LOCAL.udata = nil;
     -- create constructor
     -- for Lua5.1
     if setfenv then
@@ -242,8 +262,10 @@ local function buildConstructor( constructor )
     return class;
 end
 
+
+
 -- create build hooks
-local function createHooks( newIndex, getIndex, setProperty )
+local function createHooks( newIndex, getIndex, setProperty, super )
     return {
         -- class
         setmetatable( {}, {
@@ -255,7 +277,10 @@ local function createHooks( newIndex, getIndex, setProperty )
             __newindex = newIndex,
             __index = getIndex
         }),
-        setProperty
+        -- property register function
+        setProperty,
+        -- methods of super class
+        protectTable( super )
     };
 end
 
@@ -327,7 +352,8 @@ local function class( ... )
         
         return nil;
     end
-    local hooks = createHooks( newIndex, getIndex, setProperty );
+    local hooks = createHooks( newIndex, getIndex, setProperty, 
+                               constructor.super );
     
     -- create classIndex
     classIndex = {
