@@ -11,13 +11,14 @@ luarocks install --from=http://mah0x211.github.io/rocks/ halo
 
 ## Create Class
 
-### Class, Method, Property = halo.class( [baseClass [, ...]] )
+### Class, Method, Property, Super = halo.class( [baseClass [, ...]] )
 
 ** Returns **
 
 1. Class: class table.
 2. Method: method table.
 3. Property: property register function.
+4. Super: method table of base classes.
 
 ** Example **
 
@@ -162,7 +163,7 @@ return Class.constructor;
 local halo = require('halo');
 -- create class
 -- inherit hello class
-local Class, Method, Property = halo.class( 'hello' );
+local Class, Method, Property, Super = halo.class( 'hello' );
 
 --[[
     MARK: Define Class Methods
@@ -188,14 +189,8 @@ Property({
 --[[
     MARK: Override Initializer
 --]]
-function Method:init( bases, ... )
-    local i,init;
-    
-    -- call initializers of base classes
-    for i, init in ipairs( bases ) do
-        init( self, bases, ... );
-    end
-    
+function Method:init( ... )
+    Super.hello.init( self, ... );
     print( 'init world', bases, ... );
 end
 
