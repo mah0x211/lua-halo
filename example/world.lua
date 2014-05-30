@@ -30,7 +30,7 @@
 local halo = require('halo');
 -- create class
 -- inherit hello class
-local Class, Method, Property = halo.class( 'hello' );
+local Class, Method, Property, Super = halo.class( 'hello' );
 
 --[[
     MARK: Define Class Methods
@@ -56,15 +56,9 @@ Property({
 --[[
     MARK: Override Initializer
 --]]
-function Method:init( bases, ... )
-    local i,init;
-    
-    -- call initializers of base classes
-    for i, init in ipairs( bases ) do
-        init( self, bases, ... );
-    end
-    
-    print( 'init world', bases, ... );
+function Method:init( ... )
+    Super.hello.init( self, ...);
+    print( 'init world', ... );
 end
 
 --[[
