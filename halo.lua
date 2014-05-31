@@ -84,7 +84,7 @@ local function deepCopy( dest, obj )
     for k,v in pairs( obj ) do
         t = type( v );
         if t == 'table' then
-            rawset( replica, k, deepCopy( nil, v ) );
+            rawset( replica, k, deepCopy( dest and rawget( dest, k ), v ) );
         else
             rawset( replica, k, v );
         end
