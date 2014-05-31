@@ -4,7 +4,7 @@ source = {
     url = "git://github.com/mah0x211/lua-halo.git"
 }
 description = {
-    summary = "",
+    summary = "Simple OOP Library For Lua",
     detailed = [[]],
     homepage = "https://github.com/mah0x211/lua-halo", 
     license = "MIT/X11",
