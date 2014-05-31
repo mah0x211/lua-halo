@@ -66,6 +66,7 @@ local function INSPECT_HOOK( value, valueType, valueFor, key, FNIDX )
     
     return value;
 end
+
 local INSPECT_OPTS_LOCAL = {
     padding = 0,
     callback = INSPECT_HOOK
@@ -190,7 +191,7 @@ local function inherits( ... )
         env = {
             error = error,
             setmetatable = setmetatable,
-            FNIDX = {},
+            FNIDX = {}
         }
     };
     local inheritance = {};
@@ -285,6 +286,28 @@ local function createHooks( newIndex, getIndex, setProperty, super )
 end
 
 
+local function hasImplicitSelfArg( method )
+    local th = coroutine.create( method );
+    local checkArgs = function()
+        -- enter method
+        if debug.getinfo( 2, 'f' ).func == method then
+            -- check first argument of method
+            local firstArg = debug.getlocal( 2, 1 );
+            error( firstArg == 'self' );
+        end
+    end
+    local hasSelf;
+    
+    -- set hook
+    debug.sethook( th, checkArgs, 'c' );
+    hasSelf = select( 2, coroutine.resume( th ) );
+    -- remove hook
+    debug.sethook( th, nil );
+    
+    return hasSelf;
+end
+
+
 -- class, property, method
 local function class( ... )
     -- create constructor
@@ -334,6 +357,8 @@ local function class( ... )
                 error( ('%q method must be type of function'):format( key ) );
             elseif val ~= nil and type( val ) ~= 'function' then
                 error( 'method must be type of function' );
+            elseif not hasImplicitSelfArg( val ) then
+                error( ('incorrect method declaration: method %q cannot use implicit self variable'):format( key ) );
             end
             rawset( tbl, key, val );
         else
