@@ -286,25 +286,25 @@ local function createHooks( newIndex, getIndex, setProperty, super )
 end
 
 
-local function hasImplicitSelfArg( method )
-    local th = coroutine.create( method );
-    local checkArgs = function()
-        -- enter method
-        if debug.getinfo( 2, 'f' ).func == method then
-            -- check first argument of method
-            local firstArg = debug.getlocal( 2, 1 );
-            error( firstArg == 'self' );
+local function hasImplicitSelfArg( checklist, method )
+    local addr = tostring(method);
+    
+    if checklist[addr] == nil then
+        local info = debug.getinfo( method, 'S' );
+        local linedefined = info.linedefined;
+        local nline = 1;
+        local line;
+        
+        for line in io.lines( info.short_src ) do
+            if nline == linedefined then
+                checklist[addr] = line:find( '^%s*function Method:' );
+                break;
+            end
+            nline = nline + 1;
         end
     end
-    local hasSelf;
     
-    -- set hook
-    debug.sethook( th, checkArgs, 'c' );
-    hasSelf = select( 2, coroutine.resume( th ) );
-    -- remove hook
-    debug.sethook( th, nil );
-    
-    return hasSelf;
+    return checklist[addr];
 end
 
 
@@ -315,6 +315,7 @@ local function class( ... )
     local metatable = constructor.class;
     local method = constructor.class.__index;
     local defaultProps = constructor.props;
+    local checklist = {};
     
     -- property register function
     local setProperty = function( props, replace )
@@ -357,7 +358,7 @@ local function class( ... )
                 error( ('%q method must be type of function'):format( key ) );
             elseif val ~= nil and type( val ) ~= 'function' then
                 error( 'method must be type of function' );
-            elseif not hasImplicitSelfArg( val ) then
+            elseif not hasImplicitSelfArg( checklist, val ) then
                 error( ('incorrect method declaration: method %q cannot use implicit self variable'):format( key ) );
             end
             rawset( tbl, key, val );
