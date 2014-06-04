@@ -290,18 +290,25 @@ local function hasImplicitSelfArg( checklist, method )
     local addr = tostring(method);
     
     if checklist[addr] == nil then
-        local info = debug.getinfo( method, 'S' );
-        local linedefined = info.linedefined;
-        local nline = 1;
-        local line;
-        
-        for line in io.lines( info.short_src ) do
-            if nline == linedefined then
-                checklist[addr] = line:find( '^%s*function Method:' );
-                break;
+        local th = coroutine.create( method );
+        local checkArgs = function( ... )
+            -- enter method
+            if debug.getinfo( 2, 'f' ).func == method then
+                -- check first argument of method
+                local firstArg = debug.getlocal( 2, 1 );
+                if firstArg then
+                    checklist[addr] = firstArg == 'self';
+                    error('abort');
+                end
             end
-            nline = nline + 1;
         end
+        
+        -- set hook
+        -- NOTE: must be used line-hook cuz segfault occur on luajit
+        debug.sethook( th, checkArgs, 'l' );
+        coroutine.resume( th );
+        -- remove hook
+        debug.sethook( th, nil );
     end
     
     return checklist[addr];
