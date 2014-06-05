@@ -344,10 +344,12 @@ local function class( ... )
         elseif tbl == method then
             if key == 'init' and type( val ) ~= 'function' then
                 error( ('%q method must be type of function'):format( key ), 2 );
-            elseif val ~= nil and type( val ) ~= 'function' then
-                error( 'method must be type of function', 2 );
-            elseif not hasImplicitSelfArg( checklist, val ) then
-                error( ('incorrect method declaration: method %q cannot use implicit self variable'):format( key ), 2 );
+            elseif val ~= nil then
+                if type( val ) ~= 'function' then
+                    error( 'method must be type of function', 2 );
+                elseif not hasImplicitSelfArg( checklist, val ) then
+                    error( ('incorrect method declaration: method %q cannot use implicit self variable'):format( key ), 2 );
+                end
             end
             rawset( tbl, key, val );
         else
