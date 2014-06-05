@@ -57,7 +57,7 @@ Class.version = 0.1;
 ```lua
 Property({
     hello = 'hello'
-} [, replaceIneritedVariables:boolean] );
+} [, replaceInheritedVariables:boolean] );
 ```
 
 ### Override Initializer
