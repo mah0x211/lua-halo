@@ -27,6 +27,7 @@
   
 --]]
 
+local LUA_VERS = tonumber( _VERSION:match( 'Lua (.+)$' ) );
 local inspect = require('util').inspect;
 local require = require;
 local REGISTRY = {};
@@ -237,14 +238,14 @@ local function buildConstructor( constructor )
     INSPECT_OPTS.udata = nil;
     INSPECT_OPTS_LOCAL.udata = nil;
     -- create constructor
+    -- for Lua5.2
+    if LUA_VERS > 5.1 then
+        ok, class = pcall( load( class, nil, 't', constructor.env ) );
     -- for Lua5.1
-    if setfenv then
+    else
         class = loadstring( class );
         setfenv( class, constructor.env );
         ok, class = pcall( class );
-    -- for Lua5.2
-    else
-        ok, class = pcall( load( class, nil, 't', constructor.env ) );
     end
     
     if not ok then
@@ -287,11 +288,35 @@ end
 
 
 local function hasImplicitSelfArg( checklist, method )
-    local addr = tostring(method);
-    
-    if checklist[addr] == nil then
-        checklist[addr] = debug.getlocal( coroutine.create( method ), 
-                                          method, 1 ) == 'self';
+    local addr = tostring( method );
+
+    -- for Lua5.2
+    if LUA_VERS > 5.1 then
+        if checklist[addr] == nil then
+            checklist[addr] = debug.getlocal( method, 1 ) == 'self';
+        end
+    -- for Lua5.1
+    else
+        local info = debug.getinfo( method );
+        
+        if info.what == 'Lua' then
+            local head, tail = info.linedefined, info.lastlinedefined;
+            local lineno = 0;
+            local src = {};
+            local line;
+            
+            for line in io.lines( info.source:sub( 2 ) ) do
+                lineno = lineno + 1;
+                if lineno > tail then
+                    break;
+                elseif lineno >= head then
+                    rawset( src, #src + 1, line );
+                end
+            end
+            
+            src = table.concat( src, '\n' );
+            checklist[addr] = src:find( '^%s*function%s[^:]+:' ) ~= nil;
+        end
     end
     
     return checklist[addr];
