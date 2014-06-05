@@ -117,7 +117,7 @@ end
 
 -- protect table
 local function attemptNewIndex()
-    error( 'attempt to change the super table' );
+    error( 'attempt to change the super table', 2 );
 end
 
 local function protectTable( target )
@@ -207,7 +207,7 @@ local function inherits( ... )
             constructor = getClassConstructor( module );
             -- this class is not halo class
             if not constructor then
-                error( ('inherit: %q is not halo class'):format( module ) );
+                error( ('inherit: %q is not halo class'):format( module ), 3 );
             end
             
             rawset( inheritance, module, true );
@@ -310,7 +310,7 @@ local function class( ... )
     -- property register function
     local setProperty = function( props, replace )
         if type( props ) ~= 'table' then
-            error( 'property must be type of table' );
+            error( 'property must be type of table', 2 );
         -- merge property table
         elseif not replace then
             mergeCopy( props, defaultProps );
@@ -324,16 +324,16 @@ local function class( ... )
     local newIndex = function( tbl, key, val )
         tbl = rawget( classIndex, tostring(tbl) );
         
+        if type( key ) ~= 'string' then
+            error( 'field name must be type of string', 2 );
         -- metamethod and class method
-        if tbl == metatable then
-            if type( key ) ~= 'string' then
-                error( 'metamethod name must be type of string' );
-            elseif key == '__index' or key == 'constructor' then
-                error( ('%q field changes are disallowed'):format( key ) );
+        elseif tbl == metatable then
+            if key == '__index' or key == 'constructor' then
+                error( ('%q field changes are disallowed'):format( key ), 2 );
             -- metamethod
             elseif key:find( '^__*' ) then
                 if val ~= nil and type( val ) ~= 'function' then
-                    error( 'metamethod must be type of function' );
+                    error( 'metamethod must be type of function', 2 );
                 end
                 rawset( tbl, key, val );
             -- class method or class variable
@@ -342,14 +342,12 @@ local function class( ... )
             end
         -- instance method
         elseif tbl == method then
-            if type( key ) ~= 'string' then
-                error( 'method name must be type of string' );
-            elseif key == 'init' and type( val ) ~= 'function' then
-                error( ('%q method must be type of function'):format( key ) );
+            if key == 'init' and type( val ) ~= 'function' then
+                error( ('%q method must be type of function'):format( key ), 2 );
             elseif val ~= nil and type( val ) ~= 'function' then
-                error( 'method must be type of function' );
+                error( 'method must be type of function', 2 );
             elseif not hasImplicitSelfArg( checklist, val ) then
-                error( ('incorrect method declaration: method %q cannot use implicit self variable'):format( key ) );
+                error( ('incorrect method declaration: method %q cannot use implicit self variable'):format( key ), 2 );
             end
             rawset( tbl, key, val );
         else
