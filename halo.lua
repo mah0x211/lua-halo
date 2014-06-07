@@ -323,6 +323,17 @@ local function hasImplicitSelfArg( checklist, method )
 end
 
 
+local function checkMethodDecl( checklist, key, val )
+    if type( val ) ~= 'function' then
+        error( 'method must be type of function', 3 );
+    elseif not hasImplicitSelfArg( checklist, val ) then
+        error( ([[
+incorrect method declaration: method %q cannot use implicit self variable
+]]):format( key ), 3 );
+    end
+end
+
+
 -- class, property, method
 local function class( ... )
     -- create constructor
@@ -357,8 +368,8 @@ local function class( ... )
                 error( ('%q field changes are disallowed'):format( key ), 2 );
             -- metamethod
             elseif key:find( '^__*' ) then
-                if val ~= nil and type( val ) ~= 'function' then
-                    error( 'metamethod must be type of function', 2 );
+                if val ~= nil then
+                    checkMethodDecl( checklist, key, val );
                 end
                 rawset( tbl, key, val );
             -- class method or class variable
@@ -370,11 +381,7 @@ local function class( ... )
             if key == 'init' and type( val ) ~= 'function' then
                 error( ('%q method must be type of function'):format( key ), 2 );
             elseif val ~= nil then
-                if type( val ) ~= 'function' then
-                    error( 'method must be type of function', 2 );
-                elseif not hasImplicitSelfArg( checklist, val ) then
-                    error( ('incorrect method declaration: method %q cannot use implicit self variable'):format( key ), 2 );
-                end
+                checkMethodDecl( checklist, key, val );
             end
             rawset( tbl, key, val );
         else
