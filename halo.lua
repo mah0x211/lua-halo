@@ -179,10 +179,11 @@ end
 local function inherits( ... )
     local defaultConstructor = { 
         class = {
-            __index = {
+            -- wrap __index table
+            __index = setmetatable({
                 -- initializer
                 init = init
-            }
+            }, {})
         },
         props = {},
         static = {},
@@ -364,14 +365,20 @@ local function class( ... )
             error( 'field name must be type of string', 2 );
         -- metamethod and class method
         elseif tbl == metatable then
-            if key == '__index' or key == 'constructor' then
+            if key == 'constructor' then
                 error( ('%q field changes are disallowed'):format( key ), 2 );
             -- metamethod
             elseif key:find( '^__*' ) then
                 if val ~= nil then
                     checkMethodDecl( checklist, key, val );
                 end
-                rawset( tbl, key, val );
+                
+                -- set __index method into method metatable
+                if key == '__index' then
+                    rawset( getmetatable( method ), key, val );
+                else
+                    rawset( tbl, key, val );
+                end
             -- class method or class variable
             else
                 rawset( constructor.static, key, val );
