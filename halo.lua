@@ -31,9 +31,10 @@ local LUA_VERS = tonumber( _VERSION:match( 'Lua (.+)$' ) );
 local inspect = require('util').inspect;
 local require = require;
 local REGISTRY = {};
+local METHOD_TMPL = [==[setmetatable(%s, %s)]==];
 local CONSTRUCTOR_TMPL = [==[
 local function Constructor(...)
-    local self = setmetatable( %s, CLASS );
+    local self = setmetatable( %s, %s );
     
     return self, self:init( ... );
 end
@@ -42,7 +43,6 @@ local EXPORTS = %s;
 EXPORTS.new = Constructor;
 
 return EXPORTS;
-
 ]==];
 
 local function getFunctionId( func )
@@ -178,20 +178,18 @@ end
 
 local function inherits( ... )
     local defaultConstructor = { 
-        class = {
-            -- wrap __index table
-            __index = setmetatable({
-                -- initializer
-                init = init
-            }, {})
+        class = {},
+        methods = {
+            -- initializer
+            init = init
         },
+        methodsmt = {},
         props = {},
         static = {},
         -- method table of super classes
         super = {},
         -- set constructor environments
         env = {
-            error = error,
             setmetatable = setmetatable,
             FNIDX = {}
         }
@@ -199,9 +197,6 @@ local function inherits( ... )
     local inheritance = {};
     local super = defaultConstructor.super;
     local module, constructor, i, _;
-    
-    -- set constructor.class to environments
-    defaultConstructor.env.CLASS = defaultConstructor.class;
     
     -- loading modules
     for i, module in ipairs({...}) do
@@ -214,8 +209,10 @@ local function inherits( ... )
             
             rawset( inheritance, module, true );
             -- copy super, class, props, static, env.FNIDX
-            rawset( super, module, constructor.class.__index );
+            rawset( super, module, constructor.methods );
             deepCopy( defaultConstructor.class, constructor.class );
+            deepCopy( defaultConstructor.methods, constructor.methods );
+            deepCopy( defaultConstructor.methodsmt, constructor.methodsmt );
             deepCopy( defaultConstructor.props, constructor.props );
             deepCopy( defaultConstructor.static, constructor.static );
             deepCopy( defaultConstructor.env.FNIDX, constructor.env.FNIDX );
@@ -226,25 +223,45 @@ local function inherits( ... )
 end
 
 
-local function buildConstructor( constructor )
-    local ok, class, classId;
+local function makeTemplate( constructor )
+    local tmpl, methods;
     
     --  create constructor template
+    INSPECT_OPTS.padding = 4;
     INSPECT_OPTS.udata = constructor.env.FNIDX;
     INSPECT_OPTS_LOCAL.udata = INSPECT_OPTS.udata;
-    class = CONSTRUCTOR_TMPL:format(
+    -- render constructor
+    constructor.class.__index = 'METHOD_TMPL';
+    tmpl = CONSTRUCTOR_TMPL:format(
         inspect( constructor.props, INSPECT_OPTS ),
+        inspect( constructor.class, INSPECT_OPTS ),
         inspect( constructor.static, INSPECT_OPTS_LOCAL )
+    );
+    -- render method table
+    INSPECT_OPTS.padding = 8;
+    methods = METHOD_TMPL:format(
+        inspect( constructor.methods, INSPECT_OPTS ),
+        inspect( constructor.methodsmt, INSPECT_OPTS )
     );
     INSPECT_OPTS.udata = nil;
     INSPECT_OPTS_LOCAL.udata = nil;
+    
+    -- insert method table
+    return tmpl:gsub( '"METHOD_TMPL"', methods );
+end
+
+
+local function buildConstructor( constructor )
+    local tmpl = makeTemplate( constructor );
+    local ok, class, classId;
+    
     -- create constructor
     -- for Lua5.2
     if LUA_VERS > 5.1 then
-        ok, class = pcall( load( class, nil, 't', constructor.env ) );
+        ok, class = pcall( load( tmpl, nil, 't', constructor.env ) );
     -- for Lua5.1
     else
-        class = loadstring( class );
+        class = loadstring( tmpl );
         setfenv( class, constructor.env );
         ok, class = pcall( class );
     end
@@ -340,7 +357,8 @@ local function class( ... )
     -- create constructor
     local constructor = inherits( ... );
     local metatable = constructor.class;
-    local method = constructor.class.__index;
+    local methods = constructor.methods;
+    local methodsmt = constructor.methodsmt;
     local defaultProps = constructor.props;
     local checklist = {};
     
@@ -375,7 +393,7 @@ local function class( ... )
                 
                 -- set __index method into method metatable
                 if key == '__index' then
-                    rawset( getmetatable( method ), key, val );
+                    rawset( methodsmt, key, val );
                 else
                     rawset( tbl, key, val );
                 end
@@ -384,7 +402,7 @@ local function class( ... )
                 rawset( constructor.static, key, val );
             end
         -- instance method
-        elseif tbl == method then
+        elseif tbl == methods then
             if key == 'init' and type( val ) ~= 'function' then
                 error( ('%q method must be type of function'):format( key ), 2 );
             elseif val ~= nil then
@@ -413,7 +431,7 @@ local function class( ... )
     -- create classIndex
     classIndex = {
         [tostring(hooks[1])] = metatable,
-        [tostring(hooks[2])] = method
+        [tostring(hooks[2])] = methods
     };
     
     return unpack( hooks );
