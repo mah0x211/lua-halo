@@ -80,6 +80,18 @@ end
 return Class.constructor;
 ```
 
+
+### Using Halo-Class Module
+
+you should require halo module before using the halo-class modules.
+
+```lua
+require('halo');
+local hello = require('hello');
+
+local helloObj = hello.new( 1, 2, 3 );
+```
+
 ## Example Usage
 
 **example/hello.lua**
@@ -217,7 +229,8 @@ return Class.constructor;
   Created by Masatoshi Teruya on 14/05/28.
   
 --]]
--- require world class
+-- require halo module before using the halo-class modules.
+require('halo');
 local hello = require('hello');
 local world = require('world');
 
@@ -252,7 +265,6 @@ print(
 **output**
 
 ```
-
 CREATE hello INSTANCE ----------------------------------------------
 init hello	table: 0x000459c8	1	2	3
 
