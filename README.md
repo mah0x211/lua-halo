@@ -230,7 +230,7 @@ return Class.constructor;
   
 --]]
 -- require halo module before using the halo-class modules.
-require('halo');
+local halo = require('halo');
 local hello = require('hello');
 local world = require('world');
 
@@ -259,6 +259,20 @@ print(
     'helloObj.say2 == worldObj.say2\n',
     ('= %s == %s\n'):format( helloObj.say2, worldObj.say2 ), 
     ('= %s'):format( helloObj.say2 == worldObj.say2 )
+);
+
+print( '\nCHECK INSTANCEOF -------------------------------------------------' );
+print( 
+    'halo.instanceof( helloObj, hello )', halo.instanceof( helloObj, hello )
+);
+print(
+    'halo.instanceof( helloObj, world )', halo.instanceof( helloObj, world )
+);
+print(
+    'halo.instanceof( worldObj, world )', halo.instanceof( worldObj, world )
+);
+print(
+    'halo.instanceof( worldObj, hello )', halo.instanceof( worldObj, hello )
 );
 ```
 
@@ -289,4 +303,9 @@ helloObj.say2 == worldObj.say2
 	= function: 0x0005d140 == function: 0x0005d140
 	= true
 
+CHECK INSTANCEOF -------------------------------------------------
+halo.instanceof( helloObj, hello )	true
+halo.instanceof( helloObj, world )	false
+halo.instanceof( worldObj, world )	true
+halo.instanceof( worldObj, hello )	false
 ```
