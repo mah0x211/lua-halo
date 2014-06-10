@@ -63,7 +63,7 @@ Property({
 ### Override Initializer
 
 ```lua
-function Method:init( baseClassInitializers, ... )
+function Method:init( ... )
     print( 'init hello', ... );
 end
 ```
