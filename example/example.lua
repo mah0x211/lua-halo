@@ -27,7 +27,7 @@
   
 --]]
 -- require halo module before using the halo-class modules
-require('halo');
+local halo = require('halo');
 local hello = require('hello');
 local world = require('world');
 
@@ -57,3 +57,18 @@ print(
     ('= %s == %s\n'):format( helloObj.say2, worldObj.say2 ), 
     ('= %s'):format( helloObj.say2 == worldObj.say2 )
 );
+
+print( '\nCHECK INSTANCEOF -------------------------------------------------' );
+print( 
+    'halo.instanceof( helloObj, hello )', halo.instanceof( helloObj, hello )
+);
+print(
+    'halo.instanceof( helloObj, world )', halo.instanceof( helloObj, world )
+);
+print(
+    'halo.instanceof( worldObj, world )', halo.instanceof( worldObj, world )
+);
+print(
+    'halo.instanceof( worldObj, hello )', halo.instanceof( worldObj, hello )
+);
+
