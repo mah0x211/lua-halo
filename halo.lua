@@ -33,26 +33,23 @@ local require = require;
 local REGISTRY = {};
 local METHOD_TMPL = [==[setmetatable(%s, %s)]==];
 local CONSTRUCTOR_TMPL = [==[
+local class;
 local function Constructor(...)
-    local self = setmetatable( %s, %s );
+    local self = setmetatable(%s, %s);
     
     return self, self:init( ... );
 end
 
-local EXPORTS = %s;
-EXPORTS.new = Constructor;
+class = function()
+    return %s;
+end
 
-return EXPORTS;
+return class;
 ]==];
 
 local function getFunctionId( func )
     return ('%s'):format( tostring(func) ):gsub( '^function: 0x0*', '' );
 end
-
-local function getClassId( class )
-    return ('%s'):format( tostring(class) ):gsub( '^table: 0x0*', '' );
-end
-
 
 -- inspect hook
 local function INSPECT_HOOK( value, valueType, valueFor, key, FNIDX )
@@ -150,29 +147,35 @@ end
 
 
 local function import( module )
-    if not package.loaded[module] then
-        -- load module
-        local class = require( module );
-        -- check registry index
-        local constructor = rawget( REGISTRY, getClassId( class ) );
-        
-        -- found class constructor
-        if constructor then
+    local loaded = package.loaded[module];
+    -- load module
+    local class = loaded or require( module );
+    -- check registry index
+    local constructor = type( class ) == 'function' and 
+                        rawget( REGISTRY, getFunctionId( class ) ) or nil;
+    
+    -- found class constructor
+    if constructor then
+        if not loaded then
             -- add module name
             rawset( constructor, 'module', module );
         end
         
-        return class;
+        return class();
     end
     
-    return require( module );
+    return class;
 end
 -- swap require with import
 _G.require = import;
 
+
 local function getClassConstructor( module )
-    local class = import( module );
-    return rawget( REGISTRY, getClassId( class ) );
+    import( module );
+    local class = package.loaded[module];
+    
+    return type( class ) == 'function' and 
+           rawget( REGISTRY, getFunctionId( class ) );
 end
 
 
@@ -181,7 +184,9 @@ local function inherits( ... )
         class = {},
         methods = {
             -- initializer
-            init = init
+            init = init,
+            class = 'TMPL_CLASS',
+            constructor = 'TMPL_CONSTRUCTOR'
         },
         methodsmt = {},
         props = {},
@@ -230,13 +235,18 @@ local function makeTemplate( constructor )
     INSPECT_OPTS.padding = 4;
     INSPECT_OPTS.udata = constructor.env.FNIDX;
     INSPECT_OPTS_LOCAL.udata = INSPECT_OPTS.udata;
+    
     -- render constructor
-    constructor.class.__index = 'METHOD_TMPL';
+    rawset( constructor.class, '__index', 'TMPL_METHOD' );
+    rawset( constructor.static, 'new', 'TMPL_CONSTRUCTOR' );
     tmpl = CONSTRUCTOR_TMPL:format(
         inspect( constructor.props, INSPECT_OPTS ),
         inspect( constructor.class, INSPECT_OPTS ),
-        inspect( constructor.static, INSPECT_OPTS_LOCAL )
+        inspect( constructor.static, INSPECT_OPTS )
     );
+    rawset( constructor.class, '__index', nil );
+    rawset( constructor.static, 'new', nil );
+    
     -- render method table
     INSPECT_OPTS.padding = 8;
     methods = METHOD_TMPL:format(
@@ -246,8 +256,10 @@ local function makeTemplate( constructor )
     INSPECT_OPTS.udata = nil;
     INSPECT_OPTS_LOCAL.udata = nil;
     
-    -- insert method table
-    return tmpl:gsub( '"METHOD_TMPL"', methods );
+    -- replace templates
+    return tmpl:gsub( '"TMPL_METHOD"', methods )
+               :gsub( '"TMPL_CLASS"', 'class')
+               :gsub( '"TMPL_CONSTRUCTOR"', 'Constructor');
 end
 
 
@@ -275,7 +287,7 @@ local function buildConstructor( constructor )
         rawset( REGISTRY, constructor.id, nil );
     end
     -- add new registry
-    classId = getClassId( class );
+    classId = getFunctionId( class );
     constructor.id = classId;
     rawset( REGISTRY, classId, constructor );
     
@@ -383,7 +395,7 @@ local function class( ... )
             error( 'field name must be type of string', 2 );
         -- metamethod and class method
         elseif tbl == metatable then
-            if key == 'constructor' then
+            if key == 'new' then
                 error( ('%q field changes are disallowed'):format( key ), 2 );
             -- metamethod
             elseif key:find( '^__*' ) then
@@ -403,7 +415,9 @@ local function class( ... )
             end
         -- instance method
         elseif tbl == methods then
-            if key == 'init' and type( val ) ~= 'function' then
+            if key == 'class' or key == 'constructor' then
+                error( ('%q field changes are disallowed'):format( key ), 2 );
+            elseif key == 'init' and type( val ) ~= 'function' then
                 error( ('%q method must be type of function'):format( key ), 2 );
             elseif val ~= nil then
                 checkMethodDecl( checklist, key, val );
