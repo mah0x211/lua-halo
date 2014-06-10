@@ -26,26 +26,27 @@
   Created by Masatoshi Teruya on 14/05/28.
   
 --]]
--- require world class
+-- require halo module before using the halo-class modules
+require('halo');
 local hello = require('hello');
 local world = require('world');
 
 
-print( '\nCREATE hello INSTANCE ----------------------------------------------' );
+print( '\nCREATE hello INSTANCE --------------------------------------------' );
 local helloObj = hello.new( 1, 2, 3 );
-print( '\nCREATE world INSTANCE ----------------------------------------------' );
+print( '\nCREATE world INSTANCE --------------------------------------------' );
 local worldObj = world.new( 4, 5, 6 );
 
-print( '\nCALL hello INSTANCE METHOD -----------------------------------------' );
+print( '\nCALL hello INSTANCE METHOD ---------------------------------------' );
 helloObj:say( 1, 2, 3 );
 helloObj:say2( 4, 5, 6 );
 
-print( '\nCALL world INSTANCE METHOD -----------------------------------------' );
+print( '\nCALL world INSTANCE METHOD ---------------------------------------' );
 worldObj:say( 7, 8, 9 );
 worldObj:say2( 10, 11, 12 );
 
 
-print( '\nCHECK COMPARE INSTANCE METHOD -----------------------------------' );
+print( '\nCHECK COMPARE INSTANCE METHOD ------------------------------------' );
 print( 
     'helloObj.say == worldObj.say\n',
     ('= %s == %s\n'):format( helloObj.say, worldObj.say ), 
