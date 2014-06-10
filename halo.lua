@@ -452,9 +452,16 @@ local function class( ... )
 end
 
 
+local function instanceof( instance, class )
+    return type( instance ) == 'table' and type( class ) == 'table' and 
+           instance.constructor == class.new;
+end
+
+
 return {
     class = class,
     import = import,
+    instanceof = instanceof,
     printRegistry = printRegistry
 };
 
