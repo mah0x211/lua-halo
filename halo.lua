@@ -265,7 +265,7 @@ end
 
 local function buildConstructor( constructor )
     local tmpl = makeTemplate( constructor );
-    local ok, class, classId;
+    local ok, err, class, classId;
     
     -- create constructor
     -- for Lua5.2
@@ -273,9 +273,13 @@ local function buildConstructor( constructor )
         ok, class = pcall( load( tmpl, nil, 't', constructor.env ) );
     -- for Lua5.1
     else
-        class = loadstring( tmpl );
-        setfenv( class, constructor.env );
-        ok, class = pcall( class );
+        class, err = loadstring( tmpl );
+        if err then
+            class = err;
+        else
+            setfenv( class, constructor.env );
+            ok, class = pcall( class );
+        end
     end
     
     if not ok then
