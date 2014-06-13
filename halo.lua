@@ -457,8 +457,9 @@ end
 
 
 local function instanceof( instance, class )
-    return type( instance ) == 'table' and type( class ) == 'table' and 
-           instance.constructor == class.new;
+    local mt = getmetatable( instance );
+    return mt ~= nil and type( class ) == 'table' and 
+           rawget( mt.__index, 'constructor' ) == class.new;
 end
 
 
