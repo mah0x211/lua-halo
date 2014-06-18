@@ -28,445 +28,762 @@
 --]]
 
 local LUA_VERS = tonumber( _VERSION:match( 'Lua (.+)$' ) );
-local inspect = require('util').inspect;
 local require = require;
+local util = require('util');
+local typeof = util.typeof;
+local inspect = util.inspect;
 local REGISTRY = {};
-local METHOD_TMPL = [==[setmetatable(%s, %s)]==];
-local CONSTRUCTOR_TMPL = [==[
-local class;
+-- pattern
+local PTN_METAMETHOD = '^__.+';
+-- default
+local function DEFAULT_INIT(self) return self; end
+
+-- template
+local TMPL_PREPATE_METHOD = [==[
+local function getUpvalues( fn )
+    local upv = {};
+    local i = 1;
+    local k,v;
+    
+    while true do
+        k,v = debug.getupvalue( fn, i );
+        if not k then 
+            break;
+        end
+        rawset( upv, i, v );
+        i = i + 1;
+    end
+    
+    return upv;
+end
+
+local function setUpvalues( fn, upv )
+    local i,v;
+    
+    for i,v in ipairs( upv ) do
+        debug.setupvalue( fn, i, v );
+    end
+end
+
+local function getEnv( fn )
+    local env = {};
+    local k,v;
+    
+    for k,v in pairs( getfenv( fn ) or {} ) do
+        rawset( env, k, v );
+    end
+    
+    return env;
+end
+
+local PROTECTED = setmetatable({},{
+    __mode = 'k';
+});
+
+local function getProtected( instance )
+    return rawget( PROTECTED, instance );
+end
+
+local function noNewIndex()
+    error( 'attempted to assign to readonly property', 2 );
+end
+
+local function noIndex()
+    error( 'attempted to access to undefined property', 2 );
+end
+
+local METHOD_IDX = %s;
+
+do
+    local BASE_IDX = {};
+    local BASE = setmetatable({}, {
+        __newindex = noNewIndex,
+        __index = setmetatable( BASE_IDX, {
+            __index = noIndex
+        })
+    });
+    local k, fn, env, upv;
+    
+    for k,fn in pairs( METHOD_IDX ) do
+        upv = getUpvalues( fn );
+        env = getEnv( fn );
+        
+        fn = string.dump( fn );
+        fn = loadstring( fn );
+        setUpvalues( fn, upv );
+        setfenv( fn, env );
+        
+        rawset( env, 'protected', getProtected );
+        rawset( env, 'base', BASE );
+        rawset( METHOD_IDX, k, fn );
+    end
+    
+    for k,fn in pairs("$BASE$") do
+        rawset( BASE_IDX, k, fn );
+    end
+end
+
+
+]==];
+local TMPL_METHOD_METATABLE = [==[setmetatable(%s, %s)]==];
+local TMPL_CONSTRUCTOR = [==[
+"$PREPARE_METHOD$"
+
 local function Constructor(...)
     local self = setmetatable(%s, %s);
     
-    return self, self:init( ... );
+    rawset( PROTECTED, self, %s );
+    
+    return self:init( ... );
 end
 
-class = function()
-    return %s;
-end
-
-return class;
+return Constructor;
 ]==];
+
 
 local function getFunctionId( func )
     return ('%s'):format( tostring(func) ):gsub( '^function: 0x0*', '' );
 end
 
 -- inspect hook
-local function INSPECT_HOOK( value, valueType, valueFor, key, FNIDX )
+local function inspectHook( value, valueType, valueFor, key, fnindex )
     -- should add function-id to FNIDX table 
     if valueFor == 'value' and valueType == 'function' then
         local id = getFunctionId( value );
         
-        rawset( FNIDX, id, value );
+        rawset( fnindex, id, value );
         
-        return ('FNIDX[%q]'):format( id ), true;
+        return ('METHOD_IDX[%q]'):format( id ), true;
     end
     
     return value;
 end
 
-local INSPECT_OPTS_LOCAL = {
-    padding = 0,
-    callback = INSPECT_HOOK
-};
-local INSPECT_OPTS = {
-    padding = 4,
-    callback = INSPECT_HOOK
-};
 
-
-local function deepCopy( dest, obj )
-    local replica = type( dest ) == 'table' and dest or {};
-    local k,v,t;
+local function makeTemplate( defs, METHOD_IDX )
+    local opts = {
+        padding = 4,
+        callback = inspectHook,
+        udata = METHOD_IDX
+    };
+    local repls = {
+        ['$CONSTRUCTOR$']   = 'Constructor',
+        ['$BASE$']          = '{}';
+    };
+    local base = rawget( defs, 'base' );
+    local instance = rawget( defs, 'instance' );
+    local method = rawget( instance, 'method' );
+    local metamethod = rawget( instance, 'metamethod' );
+    local property = rawget( instance, 'property' );
+    local public = rawget( property, 'public' );
+    local protected = rawget( property, 'protected' );
+    local mmindex = rawget( metamethod, '__index' );
+    local tmpl;
     
-    for k,v in pairs( obj ) do
-        t = type( v );
-        if t == 'table' then
-            rawset( replica, k, deepCopy( dest and rawget( dest, k ), v ) );
-        else
-            rawset( replica, k, v );
-        end
+    if base then
+        rawset( repls, '$BASE$', inspect( base or {}, opts ) )
     end
     
-    return replica;
+    -- render template of constructor
+    rawset( metamethod, '__index', '$METHOD$' );
+    tmpl = TMPL_CONSTRUCTOR:format(
+        inspect( public, opts ),
+        inspect( metamethod, opts ),
+        
+        -- FIXME: private
+        inspect( protected, opts )
+    );
+    rawset( metamethod, '__index', nil );
+
+    -- render template of metatable
+    opts.padding = 8;
+    rawset( method, 'constructor', '$CONSTRUCTOR$' );
+    if mmindex then
+        rawset( repls, '$METHOD$', TMPL_METHOD_METATABLE:format(
+            inspect( method, opts ),
+            inspect( { __index = mmindex }, opts )
+        ));
+    else
+        rawset( repls, '$METHOD$', inspect( method, opts ) );
+    end
+    rawset( method, 'constructor', nil );
+    rawset( metamethod, '__index', mmindex );
+    
+    -- render template of private variables
+    opts.padding = 0;
+    rawset( 
+        repls, '$PREPARE_METHOD$', 
+        TMPL_PREPATE_METHOD:format( inspect( METHOD_IDX, opts ) )
+    );
+    
+    -- replace templates
+    return tmpl:gsub( '"(%$[^$"]+%$)"', repls )
+               :gsub( '"(%$[^$"]+%$)"', repls );
 end
 
 
-local function mergeCopy( dest, obj )
-    local k,v,destVal;
+local function mergeRight( dest, src )
+    local tbl = typeof.table( dest ) and dest or {};
+    local k,v;
     
-    for k,v in pairs( obj ) do
-        destVal = rawget( dest, k );
-        if not destVal then
-            if type( v ) == 'table' then
-                destVal = {};
-                mergeCopy( destVal, v );
-                rawset( dest, k, destVal );
+    for k,v in pairs( src ) do
+        if typeof.table( v ) then
+            rawset( tbl, k, mergeRight( tbl and rawget( tbl, k ), v ) );
+        else
+            rawset( tbl, k, v );
+        end
+    end
+    
+    return tbl;
+end
+
+
+local function mergeLeft( dest, src )
+    local k,v,lv;
+    
+    for k,v in pairs( src ) do
+        lv = rawget( dest, k );
+        if not lv then
+            if typeof.table( v ) then
+                rawset( dest, k, mergeRight( nil, v ) );
             else
                 rawset( dest, k, v );
             end
         -- merge table
-        elseif type( v ) == 'table' and type( destVal ) == 'table' then
-            mergeCopy( destVal, v );
+        elseif typeof.table( v ) and typeof.table( lv ) then
+            mergeLeft( lv, v );
         end
     end
 end
 
 
--- protect table
-local function attemptNewIndex()
-    error( 'attempt to change the super table', 2 );
-end
-
-local function protectTable( target )
-    local tbl = deepCopy( nil, target );
-    local k,v;
+local function preprocess( defs )
+    local inheritance = rawget( defs, 'inheritance' );
+    local instance = rawget( defs, 'instance' );
+    local method = rawget( instance, 'method' );
     
-    for k,v in pairs( tbl ) do
-        tbl[k] = setmetatable( {}, {
-            __newindex = attemptNewIndex,
-            __index = v
-        })
+    -- remove inheritance table
+    if inheritance then
+        rawset( defs, 'inheritance', nil );
+        mergeLeft( defs, inheritance );
     end
     
-    return setmetatable( {}, {
-        __newindex = attemptNewIndex,
-        __index = tbl
-    })
-end
-
-
-local function printRegistry()
-    print( inspect( REGISTRY ) );
-end
-
-
---- initializer
-local function init()
-end
-
-
-local function import( module )
-    local loaded = package.loaded[module];
-    -- load module
-    local class = loaded or require( module );
-    -- check registry index
-    local constructor = type( class ) == 'function' and 
-                        rawget( REGISTRY, getFunctionId( class ) ) or nil;
-    
-    -- found class constructor
-    if constructor then
-        if not loaded then
-            -- add module name
-            rawset( constructor, 'module', module );
-        end
-        
-        return class();
+    -- set default init function
+    if not rawget( method, 'init' ) then
+        rawset( method, 'init', DEFAULT_INIT );
     end
-    
-    return class;
-end
--- swap require with import
-_G.require = import;
-
-
-local function getClassConstructor( module )
-    import( module );
-    local class = package.loaded[module];
-    
-    return type( class ) == 'function' and 
-           rawget( REGISTRY, getFunctionId( class ) );
 end
 
 
-local function inherits( ... )
-    local defaultConstructor = { 
-        class = {},
-        methods = {
-            -- initializer
-            init = init,
-            class = 'TMPL_CLASS',
-            constructor = 'TMPL_CONSTRUCTOR'
-        },
-        methodsmt = {},
-        props = {},
-        static = {},
-        -- method table of super classes
-        super = {},
-        -- set constructor environments
-        env = {
-            setmetatable = setmetatable,
-            FNIDX = {}
-        }
+local function postprocess( className, defs, constructor )
+    local static = rawget( defs, 'static' );
+    local method = rawget( static, 'method' );
+    local metamethod = rawget( static, 'metamethod' );
+    local newtbl = {};
+    local _;
+    
+    -- set class constructor
+    rawset( method, 'new', constructor );
+    mergeLeft( newtbl, rawget( static, 'property' ) );
+    mergeLeft( newtbl, method );
+    -- check metamethod
+    for _ in pairs( metamethod ) do
+        newtbl = setmetatable( newtbl, metamethod );
+        break;
+    end
+    -- add to registry table
+    rawset( REGISTRY, className, defs );
+    
+    return newtbl;
+end
+
+
+local CONSTRUCTOR_ENV = {
+    error           = true,
+    rawget          = true,
+    rawset          = true,
+    setmetatable    = true
+};
+local function classExports( className, defs )
+    local env = {
+        LUA_VERS = LUA_VERS,
+        METHOD_IDX = {},
+        error = error,
+        setmetatable = setmetatable,
+        debug = debug,
+        pairs = pairs,
+        ipairs = ipairs,
+        rawget = rawget,
+        rawset = rawset,
+        loadstring = loadstring,
+        getfenv = getfenv,
+        setfenv = setfenv,
+        print = print,
+        type = type,
+        string = string,
+        inspect = inspect
     };
-    local inheritance = {};
-    local super = defaultConstructor.super;
-    local module, constructor, i, _;
+    local tmpl, ok, err, constructor, k;
     
-    -- loading modules
-    for i, module in ipairs({...}) do
-        if not rawget( inheritance, module ) then
-            constructor = getClassConstructor( module );
-            -- this class is not halo class
-            if not constructor then
-                error( ('inherit: %q is not halo class'):format( module ), 3 );
-            end
-            
-            rawset( inheritance, module, true );
-            -- copy super, class, props, static, env.FNIDX
-            rawset( super, module, constructor.methods );
-            deepCopy( defaultConstructor.class, constructor.class );
-            deepCopy( defaultConstructor.methods, constructor.methods );
-            deepCopy( defaultConstructor.methodsmt, constructor.methodsmt );
-            deepCopy( defaultConstructor.props, constructor.props );
-            deepCopy( defaultConstructor.static, constructor.static );
-            deepCopy( defaultConstructor.env.FNIDX, constructor.env.FNIDX );
-        end
-    end
-    
-    return defaultConstructor;
-end
-
-
-local function makeTemplate( constructor )
-    local tmpl, methods;
-    
-    --  create constructor template
-    INSPECT_OPTS.padding = 4;
-    INSPECT_OPTS.udata = constructor.env.FNIDX;
-    INSPECT_OPTS_LOCAL.udata = INSPECT_OPTS.udata;
-    
-    -- render constructor
-    rawset( constructor.class, '__index', 'TMPL_METHOD' );
-    rawset( constructor.static, 'new', 'TMPL_CONSTRUCTOR' );
-    tmpl = CONSTRUCTOR_TMPL:format(
-        inspect( constructor.props, INSPECT_OPTS ),
-        inspect( constructor.class, INSPECT_OPTS ),
-        inspect( constructor.static, INSPECT_OPTS )
-    );
-    rawset( constructor.class, '__index', nil );
-    rawset( constructor.static, 'new', nil );
-    
-    -- render method table
-    INSPECT_OPTS.padding = 8;
-    methods = METHOD_TMPL:format(
-        inspect( constructor.methods, INSPECT_OPTS ),
-        inspect( constructor.methodsmt, INSPECT_OPTS )
-    );
-    INSPECT_OPTS.udata = nil;
-    INSPECT_OPTS_LOCAL.udata = nil;
-    
-    -- replace templates
-    return tmpl:gsub( '"TMPL_METHOD"', methods )
-               :gsub( '"TMPL_CLASS"', 'class')
-               :gsub( '"TMPL_CONSTRUCTOR"', 'Constructor');
-end
-
-
-local function buildConstructor( constructor )
-    local tmpl = makeTemplate( constructor );
-    local ok, err, class, classId;
+    -- create template
+    preprocess( defs );
+    tmpl = makeTemplate( defs, rawget( env, 'METHOD_IDX' ) );
     
     -- create constructor
     -- for Lua5.2
     if LUA_VERS > 5.1 then
-        ok, class = pcall( load( tmpl, nil, 't', constructor.env ) );
+        ok, constructor = pcall( load( tmpl, nil, 't', env ) );
+        assert( ok, constructor );
     -- for Lua5.1
     else
-        class, err = loadstring( tmpl );
-        if err then
-            class = err;
-        else
-            setfenv( class, constructor.env );
-            ok, class = pcall( class );
+        constructor, err = loadstring( tmpl );
+        assert( constructor, err );
+        setfenv( constructor, env );
+        ok, constructor = pcall( constructor );
+        assert( ok, constructor );
+    end
+    
+    -- cleanup env
+    for k in pairs( env ) do
+        if not CONSTRUCTOR_ENV[k] then 
+            rawset( env, k, nil );
         end
     end
     
-    if not ok then
-        error( class );
-    end
-    
-    -- remove old registry
-    if constructor.id then
-        rawset( REGISTRY, constructor.id, nil );
-    end
-    -- add new registry
-    classId = getFunctionId( class );
-    constructor.id = classId;
-    rawset( REGISTRY, classId, constructor );
-    
-    return class;
+    return postprocess( className, defs, constructor );
 end
 
 
-
--- create build hooks
-local function createHooks( newIndex, getIndex, setProperty, super )
-    return {
-        -- class
-        setmetatable( {}, {
-            __newindex = newIndex,
-            __index = getIndex
-        }),
-        -- method
-        setmetatable( {}, {
-            __newindex = newIndex,
-            __index = getIndex
-        }),
-        -- property register function
-        setProperty,
-        -- methods of super class
-        protectTable( super )
-    };
-end
-
-
-local function hasImplicitSelfArg( checklist, method )
-    local addr = tostring( method );
-
-    -- for Lua5.2
-    if LUA_VERS > 5.1 then
-        if checklist[addr] == nil then
-            checklist[addr] = debug.getlocal( method, 1 ) == 'self';
+local function checkNameConfliction( name, ... )
+    local _, tbl, key;
+    
+    for _, tbl in pairs({...}) do
+        for key in pairs( tbl ) do
+            assert( 
+                rawequal( key, name ) == false,
+                ('field %q already defined'):format( name )
+            );
         end
-    -- for Lua5.1
-    else
-        local info = debug.getinfo( method );
+    end
+end
+
+
+local function removeInheritance( inheritance, list )
+    local except = rawget( list, 'except' );
+    
+    if except then
+        local _, scope, methodName, tbl;
         
-        if info.what == 'Lua' then
-            local head, tail = info.linedefined, info.lastlinedefined;
-            local lineno = 0;
-            local src = {};
-            local line;
-            
-            for line in io.lines( info.source:sub( 2 ) ) do
-                lineno = lineno + 1;
-                if lineno > tail then
-                    break;
-                elseif lineno >= head then
-                    rawset( src, #src + 1, line );
-                end
-            end
-            
-            src = table.concat( src, '\n' );
-            checklist[addr] = src:find( '^%s*function%s[^:]+:' ) ~= nil;
-        end
-    end
-    
-    return checklist[addr];
-end
-
-
-local function checkMethodDecl( checklist, key, val )
-    if type( val ) ~= 'function' then
-        error( 'method must be type of function', 3 );
-    elseif not hasImplicitSelfArg( checklist, val ) then
-        error( ([[
-incorrect method declaration: method %q cannot use implicit self variable
-]]):format( key ), 3 );
-    end
-end
-
-
--- class, property, method
-local function class( ... )
-    -- create constructor
-    local constructor = inherits( ... );
-    local metatable = constructor.class;
-    local methods = constructor.methods;
-    local methodsmt = constructor.methodsmt;
-    local defaultProps = constructor.props;
-    local checklist = {};
-    
-    -- property register function
-    local setProperty = function( props, replace )
-        if type( props ) ~= 'table' then
-            error( 'property must be type of table', 2 );
-        -- merge property table
-        elseif not replace then
-            mergeCopy( props, defaultProps );
-        end
+        assert( 
+            typeof.table( except ),
+            'except must be type of table'
+        );
         
-        rawset( constructor, 'props', props ); 
-    end
-    
-    -- index hooks(closure)
-    local classIndex = {};
-    local newIndex = function( tbl, key, val )
-        tbl = rawget( classIndex, tostring(tbl) );
-        
-        if type( key ) ~= 'string' then
-            error( 'field name must be type of string', 2 );
-        -- metamethod and class method
-        elseif tbl == metatable then
-            if key == 'new' then
-                error( ('%q field changes are disallowed'):format( key ), 2 );
-            -- metamethod
-            elseif key:find( '^__*' ) then
-                if val ~= nil then
-                    checkMethodDecl( checklist, key, val );
+        for _, scope in ipairs({ 'static', 'instance' }) do
+            for _, methodName in ipairs( rawget( except, scope ) or {} ) do
+                assert( 
+                    typeof.string( methodName ) or typeof.finite( methodName ), 
+                    ('method name must be type of string or finite number')
+                    :format( methodName )
+                );
+                tbl = rawget( inheritance, scope );
+                if methodName:find( PTN_METAMETHOD ) then
+                    tbl = rawget( tbl, 'metamethod' );
+                elseif scope == 'instance' then
+                    tbl = rawget( tbl, 'method' );
                 end
                 
-                -- set __index method into method metatable
-                if key == '__index' then
-                    rawset( methodsmt, key, val );
-                else
-                    rawset( tbl, key, val );
+                if typeof.Function( rawget( tbl, methodName ) ) then
+                    rawset( tbl, methodName, nil );
                 end
-            -- class method or class variable
+            end
+        end
+    end
+end
+
+
+local function defineInheritance( defs, tbl )
+    local base = {};
+    local inheritance = {
+        base = base
+    };
+    local _, pkg, className, class, except;
+    
+    rawset( defs, 'inheritance', inheritance );
+    for _, className in ipairs( tbl ) do
+        assert( 
+            typeof.string( className ),
+            'class name must be type of string'
+        );
+        pkg = className:match( '^(.+)%.[^.]+$' );
+        if pkg and typeof.string( pkg ) then
+            require( pkg );
+        end
+        
+        -- check registry table
+        class = rawget( REGISTRY, className );
+        assert( class, ('class %q is not defined'):format( className ) );
+        
+        mergeRight( inheritance, class );
+        rawset( 
+            base, className, 
+            mergeRight( nil, rawget( class.instance, 'method' ) )
+        );
+    end
+    
+    removeInheritance( inheritance, tbl );
+    
+    return true;
+end
+
+
+local function defineMetamethod( target, name, fn, info )
+    local metamethod = rawget( target, 'metamethod' );
+    
+    assert( 
+        rawget( metamethod, name ) == nil, 
+        ('metamethod %q is already defined'):format( name )
+    );
+    rawset( metamethod, name, fn );
+end
+
+
+local function defineStaticMethod( static, name, fn, info, isMetamethod )
+    if isMetamethod then
+        defineMetamethod( static, name, fn, info );
+    else
+        local method = rawget( static, 'method' );
+        local property = rawget( static, 'property' );
+        
+        assert( 
+            name ~= 'new',
+            ('%q is reserved word'):format( name )
+        );
+        checkNameConfliction( name, method, property );
+        rawset( method, name, fn );
+    end
+end
+
+
+local function defineInstanceMethod( instance, name, fn, info, isMetamethod )
+    if isMetamethod then
+        defineMetamethod( instance, name, fn, info );
+    else
+        local method = rawget( instance, 'method' );
+        local property = rawget( instance, 'property' );
+        local public = rawget( property, 'public' );
+        local protected = rawget( property, 'protected' );
+        
+        assert( 
+            name ~= 'constructor',
+            ('%q is reserved word'):format( name )
+        );
+        checkNameConfliction( name, method, public, protected );
+        rawset( method, name, fn );
+    end
+end
+
+
+local function defineInstanceProperty( instance, tbl )
+    local property = rawget( instance, 'property' );
+    local method = rawget( instance, 'method' );
+    local public = rawget( property, 'public' );
+    local protected = rawget( property, 'protected' );
+    local scope, target, key, val;
+    
+    -- public, protected
+    for scope, tbl in pairs( tbl ) do
+        target = rawget( property, scope );
+        assert( 
+            target ~= nil,
+            ('unknown property type: %q'):format( scope )
+        );
+        for key, val in pairs( tbl ) do
+            assert( 
+                typeof.string( key ) or typeof.finite( key ),
+                'field name must be type of string or finite number' 
+            );
+            assert( 
+                key ~= 'constructor' or key ~= 'init',
+                ('%q is reserved word'):format( key )
+            );
+            checkNameConfliction( key, public, protected, method );
+            -- set field
+            if typeof.table( val ) then
+                rawset( target, key, util.table.clone( val ) );
             else
-                rawset( constructor.static, key, val );
+                rawset( target, key, val );
             end
-        -- instance method
-        elseif tbl == methods then
-            if key == 'class' or key == 'constructor' then
-                error( ('%q field changes are disallowed'):format( key ), 2 );
-            elseif key == 'init' and type( val ) ~= 'function' then
-                error( ('%q method must be type of function'):format( key ), 2 );
-            elseif val ~= nil then
-                checkMethodDecl( checklist, key, val );
-            end
-            rawset( tbl, key, val );
-        else
-            error( 'unknown table' );
         end
     end
     
-    -- return constructor
-    local getIndex = function( tbl, key )
-        tbl = rawget( classIndex, tostring(tbl) );
-        if tbl == metatable then
-            if key == 'constructor' then
-                return buildConstructor( constructor );
+    return true;
+end
+
+
+local function defineStaticProperty( static, tbl )
+    local property = rawget( static, 'property' );
+    local method = rawget( static, 'method' );
+    local key,val;
+    
+    for key, val in pairs( tbl ) do
+        assert( 
+            typeof.string( key ) or typeof.finite( key ),
+            'field name must be type of string or finite number' 
+        );
+        assert( 
+            key ~= 'new',
+            ('field name %q is reserved word'):format( key )
+        );
+        checkNameConfliction( key, property, method );
+        -- set field
+        if typeof.table( val ) then
+            rawset( property, key, util.table.clone( val ) );
+        else
+            rawset( property, key, val );
+        end
+    end
+    
+    return true;
+end
+
+
+local function hasImplicitSelfArg( method, info )
+    -- for Lua5.2
+    if LUA_VERS > 5.1 then
+        return debug.getlocal( method, 1 ) == 'self';
+    -- for Lua5.1
+    else
+        local head, tail = info.linedefined, info.lastlinedefined;
+        local lineno = 0;
+        local src = {};
+        local line;
+        
+        for line in io.lines( info.source:sub( 2 ) ) do
+            lineno = lineno + 1;
+            if lineno > tail then
+                break;
+            elseif lineno >= head then
+                rawset( src, #src + 1, line );
             end
         end
         
-        return nil;
+        src = table.concat( src, '\n' );
+        return src:find( '^%s*function%s[^:]+:' ) ~= nil;
     end
-    local hooks = createHooks( newIndex, getIndex, setProperty, 
-                               constructor.super );
     
-    -- create classIndex
-    classIndex = {
-        [tostring(hooks[1])] = metatable,
-        [tostring(hooks[2])] = methods
+    return false;
+end
+
+
+local function getPackagePath()
+    local i = 1;
+    local info, prev;
+    
+    repeat
+        info = debug.getinfo( i, 'nS' );
+        if info then
+            if rawget( info, 'what' ) == 'C' and 
+               rawget( info, 'name' ) == 'require' then
+                return rawget( prev, 'source' );
+            end
+            prev = info;
+            i = i + 1;
+        end
+    until info == nil;
+    
+    return nil;
+end
+
+
+local function getPackageName()
+    local src = getPackagePath();
+    
+    if src then
+        local lpath = util.string.split( package.path, ';' );
+        local _, path;
+        
+        -- sort by length
+        table.sort( lpath, function( a, b )
+            return #a > #b;
+        end);
+        
+        -- find filepath
+        for _, path in ipairs( lpath ) do
+            path = src:match( path:gsub( '%?.+$', '(.+)%.lua' ) );
+            if path then
+                return path:gsub( '/', '%.' );
+            end
+        end
+    end
+    
+    return nil;
+end
+
+
+local function createClass( _, className )
+    local pkgName = getPackageName();
+    local defs = {
+        static = {
+            property = {},
+            method = {},
+            metamethod = {}
+        },
+        instance = {
+            property = {
+                public = {},
+                protected = {}
+            },
+            method = {},
+            metamethod = {}
+        }
+    };
+    local defined = {
+        inheritance = false,
+        static      = false,
+        instance    = false
+    };
+    local exports;
+    
+    -- append package-name
+    if pkgName then
+        pkgName = pkgName .. '.' .. className;
+    else
+        pkgName = className;
+    end
+    
+    assert( 
+        typeof.string( className ), 
+        'class name must be type of string' 
+    );
+    assert( 
+        rawget( REGISTRY, pkgName ) == nil, 
+        ('class %q already defined'):format( className )
+    );
+    
+    -- declaration method table
+    local DECLARATOR = {
+        -- define inheritance
+        inherits = function( tbl )
+            assert( 
+                rawget( defined, 'inheritance' ) == false,
+                'inheritance already defined'
+            );
+            assert( 
+                typeof.table( tbl ), 
+                'inheritance must be type of table'
+            );
+            rawset( defined, 'inheritance', defineInheritance( defs, tbl ) );
+        end,
+        
+        -- define property
+        property = function( self, tbl )
+            local scope, proc;
+            
+            -- instance property
+            if tbl then
+                scope = 'instance';
+                proc = defineInstanceProperty;
+            -- static property
+            else
+                scope = 'static';
+                proc = defineStaticProperty;
+                tbl = self;
+            end
+            
+            assert( 
+                rawget( defined, scope ) == false,
+                ('%q property already defined'):format( scope )
+            );
+            assert( 
+                typeof.table( tbl ), 
+                'property must be type of table'
+            );
+            rawset( defined, scope, proc( rawget( defs, scope ), tbl ) );
+        end
     };
     
-    return unpack( hooks );
+    -- return class declarator
+    return setmetatable({},{
+        --[[ TODO: option
+        __call = function( self, ... )
+            inheritance = defineInheritance( inheritance, ... );
+            -- remove __call metamethod
+            rawset( getmetatable( self ), '__call', nil );
+            
+            return self;
+        end,
+        --]]
+        
+        -- declaration method
+        __index = function( _, name )
+            if typeof.string( name ) then
+                if name == 'exports' then
+                    assert( 
+                        exports == nil,
+                        ('class %q already exported'):format( className )
+                    );
+                    exports = classExports( pkgName, defs );
+                    
+                    return exports;
+                end
+                
+                return rawget( DECLARATOR, name );
+            end
+            
+            assert( false, ('%q is unknown declaration'):format( name ) );
+        end,
+        
+        -- method declaration
+        __newindex = function( _, name, fn )
+            local info, scope, proc;
+            
+            assert( 
+                typeof.string( name ) or typeof.finite( name ),
+                'method name must be type of string or finite number' 
+            );
+            assert( 
+                typeof.Function( fn ), 
+                ('method must be type of function'):format( name ) 
+            );
+            
+            info = debug.getinfo( fn );
+            assert( 
+                info.what == 'Lua', 
+                ('method %q must be lua function'):format( name )
+            );
+            
+            if hasImplicitSelfArg( fn, info ) then
+                scope = 'instance';
+                proc = defineInstanceMethod;
+            else
+                scope = 'static';
+                proc = defineStaticMethod;
+            end
+            
+            proc( 
+                rawget( defs, scope ), name, fn, info, 
+                name:find( PTN_METAMETHOD ) 
+            );
+        end
+    });
 end
 
 
 local function instanceof( instance, class )
     local mt = getmetatable( instance );
-    return mt ~= nil and type( class ) == 'table' and 
+    return mt ~= nil and typeof.table( class ) and 
            rawget( mt.__index, 'constructor' ) == class.new;
 end
 
+local function printRegistry()
+    print( inspect( REGISTRY ) );
+end
 
 return {
-    class = class,
-    import = import,
+    class = setmetatable({},{
+        __index = createClass
+    }),
     instanceof = instanceof,
     printRegistry = printRegistry
 };
-
