@@ -26,7 +26,6 @@
   Created by Masatoshi Teruya on 14/05/28.
   
 --]]
--- require halo module before using the halo-class modules
 local halo = require('halo');
 local hello = require('hello');
 local world = require('world');
@@ -45,18 +44,6 @@ print( '\nCALL world INSTANCE METHOD ---------------------------------------' );
 worldObj:say( 7, 8, 9 );
 worldObj:say2( 10, 11, 12 );
 
-
-print( '\nCHECK COMPARE INSTANCE METHOD ------------------------------------' );
-print( 
-    'helloObj.say == worldObj.say\n',
-    ('= %s == %s\n'):format( helloObj.say, worldObj.say ), 
-    ('= %s\n'):format( helloObj.say == worldObj.say )
-);
-print( 
-    'helloObj.say2 == worldObj.say2\n',
-    ('= %s == %s\n'):format( helloObj.say2, worldObj.say2 ), 
-    ('= %s'):format( helloObj.say2 == worldObj.say2 )
-);
 
 print( '\nCHECK INSTANCEOF -------------------------------------------------' );
 print( 

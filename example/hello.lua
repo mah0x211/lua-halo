@@ -29,60 +29,52 @@
 
 local halo = require('halo');
 -- create class
-local Class, Method, Property = halo.class();
+local Class = halo.class.Hello;
 
---[[
-    MARK: Define Metamethods
---]]
+-- MARK: Define Static
+Class.property {
+    hello_version = 0.1
+};
+
+function Class.__call()
+    print( 'call static' );
+end
+
+function Class.name()
+    print( 'hello' );
+end
+
+
+-- MARK: Define Instance
+Class:property {
+    -- public property
+    public = {
+        hello = 'hello'
+    }
+};
+
 function Class:__gc()
     print( 'gc' );
 end
 
-
---[[
-    MARK: Define Class Methods
---]]
-function Class:name()
-    print( 'hello' );
-end
-
---[[
-    MARK: Define Class Variables
---]]
-Class.version = 0.1;
-
-
---[[
-    MARK: Define Properties
---]]
-Property({
-    hello = 'hello'
-});
-
-
---[[
-    MARK: Override Initializer
---]]
-function Method:init( ... )
+-- Override Initializer
+function Class:init( ... )
     print( 'init hello', ... );
+    -- initializer must be returned self
+    return self;
 end
 
-
---[[
-    MARK: Define Instance Methods
---]]
-function Method:say( ... )
+function Class:say( ... )
     print( 'say', self.hello, ... );
 end
 
-function Method:say2( ... )
+
+function Class:say2( ... )
     print( 'say2', self.hello, ... );
 end
 
 
---[[
-    MARK: Export Class Constructor
---]]
-return Class.constructor;
+-- MARK: Export Class Constructor
+return Class.exports;
 
 

@@ -29,49 +29,57 @@
 
 local halo = require('halo');
 -- create class
--- inherit hello class
-local Class, Method, Property, Super = halo.class( 'hello' );
+local Class = halo.class.World;
 
---[[
-    MARK: Define Class Methods
---]]
-function Class:name()
+-- MARK: Inheritance
+Class.inherits {
+    -- inherit hello class
+    'hello.Hello',
+    except = {
+        instance = {
+            '__gc'
+        }
+    }
+};
+
+-- MARK: Define Static
+Class.property {
+    version = 0.2
+};
+
+function Class.name()
     print( 'world' );
 end
 
---[[
-    MARK: Define Class Variables
---]]
-Class.version = 0.2;
 
+-- MARK: Define Instance
+Class:property {
+    -- protected property
+    protected = {
+        world = 'world'
+    }
+};
 
---[[
-    MARK: Define Properties
---]]
-Property({
-    world = 'world'
-});
-
-
---[[
-    MARK: Override Initializer
---]]
-function Method:init( ... )
-    Super.hello.init( self, ...);
+-- Override Initializer
+function Class:init( ... )
+    -- call base class method
+    base['hello.Hello'].init( self, ... );
     print( 'init world', ... );
+    
+    return self;
 end
 
---[[
-    MARK: Define Instance Methods
---]]
-function Method:say( ... )
-    print( 'say', self.hello, self.world, ... );
+function Class:say( ... )
+    print(
+        'say', self.hello, 
+        -- access to protected property
+        protected(self).world, 
+        ... 
+    );
 end
 
 
---[[
-    MARK: Export Class Constructor
---]]
-return Class.constructor;
+-- MARK: Export Class Constructor
+return Class.exports;
 
 
