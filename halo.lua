@@ -37,45 +37,13 @@ local REGISTRY = {};
 local PTN_METAMETHOD = '^__.+';
 -- default
 local function DEFAULT_INIT(self) return self; end
-
 -- template
 local TMPL_PREPATE_METHOD = [==[
-local function getUpvalues( fn )
-    local upv = {};
-    local i = 1;
-    local k,v;
-    
-    while true do
-        k,v = debug.getupvalue( fn, i );
-        if not k then 
-            break;
-        end
-        rawset( upv, i, v );
-        i = i + 1;
-    end
-    
-    return upv;
-end
-
-local function setUpvalues( fn, upv )
-    local i,v;
-    
-    for i,v in ipairs( upv ) do
-        debug.setupvalue( fn, i, v );
-    end
-end
-
-local function getEnv( fn )
-    local env = {};
-    local k,v;
-    
-    for k,v in pairs( getfenv( fn ) or {} ) do
-        rawset( env, k, v );
-    end
-    
-    return env;
-end
-
+local error = error;
+local rawget = rawget;
+local rawset = rawset;
+local setmetatable = setmetatable;
+local PROPERTY_IDX = PROPERTY_IDX;
 local PROTECTED = setmetatable({},{
     __mode = 'k';
 });
@@ -102,17 +70,10 @@ do
             __index = noIndex
         })
     });
-    local k, fn, env, upv;
+    local k, fn, env;
     
     for k,fn in pairs( METHOD_IDX ) do
-        upv = getUpvalues( fn );
-        env = getEnv( fn );
-        
-        fn = string.dump( fn );
-        fn = loadstring( fn );
-        setUpvalues( fn, upv );
-        setfenv( fn, env );
-        
+        fn, env = cloneFunction( fn );
         rawset( env, 'protected', getProtected );
         rawset( env, 'base', BASE );
         rawset( METHOD_IDX, k, fn );
@@ -141,30 +102,121 @@ return Constructor;
 ]==];
 
 
+local function createFunction( tmpl, env )
+    local fn, err;
+    
+    if LUA_VERS > 5.1 then
+        fn, err = load( tmpl, nil, nil, env );
+        assert( not err, err );
+    else
+        fn, err = loadstring( tmpl );
+        assert( not err, err );
+        setfenv( fn, env );
+    end
+    
+    return fn;
+end
+
+
+local function getUpvalues( fn )
+    local upv = {};
+    local i = 1;
+    local k,v, env;
+    
+    while true do
+        k,v = debug.getupvalue( fn, i );
+        if not k then 
+            break;
+        elseif env == nil and k == '_ENV' then
+            env = v;
+        end
+        rawset( upv, i, { key = k, val = v } );
+        i = i + 1;
+    end
+    
+    return upv, env;
+end
+
+
+local function setUpvalues( fn, upv, except )
+    local i,kv;
+    
+    for i,kv in ipairs( upv ) do
+        if kv.key ~= except then
+            debug.setupvalue( fn, i, kv.val );
+        end
+    end
+end
+
+
+local function getEnv( fn )
+    local upv, env = getUpvalues( fn );
+    
+    if LUA_VERS > 5.1 then
+        if not env then
+            env = _G;
+        end
+    else
+        local k,v;
+        
+        env = {};
+        for k,v in pairs( getfenv( fn ) or {} ) do
+            rawset( env, k, v );
+        end
+    end
+    
+    return upv, env;
+end
+
+
+local function cloneFunction( fn )
+    local upv, env = getEnv( fn );
+    local err;
+    
+    fn = string.dump( fn );
+    fn = createFunction( fn, env );
+    setUpvalues( fn, upv );
+    
+    return fn, env;
+end
+
+
 local function getFunctionId( func )
     return ('%s'):format( tostring(func) ):gsub( '^function: 0x0*', '' );
 end
 
 -- inspect hook
-local function inspectHook( value, valueType, valueFor, key, fnindex )
+local function inspectHook( value, valueType, valueFor, key, ctx )
     -- should add function-id to FNIDX table 
     if valueFor == 'value' and valueType == 'function' then
         local id = getFunctionId( value );
         
-        rawset( fnindex, id, value );
+        rawset( ctx.fnindex, id, value );
         
-        return ('METHOD_IDX[%q]'):format( id ), true;
+        return ('%s[%q]'):format( ctx.prefix, id ), true;
     end
     
     return value;
 end
 
 
-local function makeTemplate( defs, METHOD_IDX )
+local function makeTemplate( defs, env )
+    local METHOD_IDX = rawget( env, 'METHOD_IDX' );
     local opts = {
         padding = 4,
         callback = inspectHook,
-        udata = METHOD_IDX
+        udata = {
+            fnindex = METHOD_IDX,
+            prefix = 'METHOD_IDX'
+        }
+    };
+    local propertyOpts = {
+        padding = 4,
+        callback = inspectHook,
+        udata = {
+            fnindex = rawget( env, 'PROPERTY_IDX' ),
+            prefix = 'PROPERTY_IDX'
+        }
     };
     local repls = {
         ['$CONSTRUCTOR$']   = 'Constructor',
@@ -187,11 +239,9 @@ local function makeTemplate( defs, METHOD_IDX )
     -- render template of constructor
     rawset( metamethod, '__index', '$METHOD$' );
     tmpl = TMPL_CONSTRUCTOR:format(
-        inspect( public, opts ),
+        inspect( public, propertyOpts ),
         inspect( metamethod, opts ),
-        
-        -- FIXME: private
-        inspect( protected, opts )
+        inspect( protected, propertyOpts )
     );
     rawset( metamethod, '__index', nil );
 
@@ -298,56 +348,31 @@ local function postprocess( className, defs, constructor )
 end
 
 
-local CONSTRUCTOR_ENV = {
-    error           = true,
-    rawget          = true,
-    rawset          = true,
-    setmetatable    = true
-};
 local function classExports( className, defs )
     local env = {
-        LUA_VERS = LUA_VERS,
         METHOD_IDX = {},
+        PROPERTY_IDX = {},
+        cloneFunction = cloneFunction,
         error = error,
         setmetatable = setmetatable,
-        debug = debug,
         pairs = pairs,
-        ipairs = ipairs,
         rawget = rawget,
-        rawset = rawset,
-        loadstring = loadstring,
-        getfenv = getfenv,
-        setfenv = setfenv,
-        print = print,
-        type = type,
-        string = string,
-        inspect = inspect
+        rawset = rawset
     };
-    local tmpl, ok, err, constructor, k;
+    local tmpl, fn, ok, constructor, k;
     
     -- create template
     preprocess( defs );
-    tmpl = makeTemplate( defs, rawget( env, 'METHOD_IDX' ) );
+    tmpl = makeTemplate( defs, env );
     
     -- create constructor
-    -- for Lua5.2
-    if LUA_VERS > 5.1 then
-        ok, constructor = pcall( load( tmpl, nil, 't', env ) );
-        assert( ok, constructor );
-    -- for Lua5.1
-    else
-        constructor, err = loadstring( tmpl );
-        assert( constructor, err );
-        setfenv( constructor, env );
-        ok, constructor = pcall( constructor );
-        assert( ok, constructor );
-    end
+    fn = createFunction( tmpl, env );
+    ok, constructor = pcall( fn );
+    assert( ok, constructor );
     
     -- cleanup env
     for k in pairs( env ) do
-        if not CONSTRUCTOR_ENV[k] then 
-            rawset( env, k, nil );
-        end
+        rawset( env, k, nil );
     end
     
     return postprocess( className, defs, constructor );
@@ -610,9 +635,9 @@ local function getPackageName()
         
         -- find filepath
         for _, path in ipairs( lpath ) do
-            path = src:match( path:gsub( '%?.+$', '(.+)%.lua' ) );
+            path = src:match( path:gsub( '%?.+$', '(.+)[.]lua' ) );
             if path then
-                return path:gsub( '/', '%.' );
+                return path:gsub( '/', '.' );
             end
         end
     end
