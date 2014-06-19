@@ -30,6 +30,7 @@
 local LUA_VERS = tonumber( _VERSION:match( 'Lua (.+)$' ) );
 local require = require;
 local util = require('util');
+local eval = util.eval;
 local typeof = util.typeof;
 local inspect = util.inspect;
 local REGISTRY = {};
@@ -102,22 +103,6 @@ return Constructor;
 ]==];
 
 
-local function createFunction( tmpl, env )
-    local fn, err;
-    
-    if LUA_VERS > 5.1 then
-        fn, err = load( tmpl, nil, nil, env );
-        assert( not err, err );
-    else
-        fn, err = loadstring( tmpl );
-        assert( not err, err );
-        setfenv( fn, env );
-    end
-    
-    return fn;
-end
-
-
 local function getUpvalues( fn )
     local upv = {};
     local i = 1;
@@ -174,7 +159,8 @@ local function cloneFunction( fn )
     local err;
     
     fn = string.dump( fn );
-    fn = createFunction( fn, env );
+    fn, err = eval( fn, env );
+    assert( not err, err );
     setUpvalues( fn, upv );
     
     return fn, env;
@@ -359,14 +345,15 @@ local function classExports( className, defs )
         rawget = rawget,
         rawset = rawset
     };
-    local tmpl, fn, ok, constructor, k;
+    local tmpl, fn, ok, err, constructor, k;
     
     -- create template
     preprocess( defs );
     tmpl = makeTemplate( defs, env );
     
     -- create constructor
-    fn = createFunction( tmpl, env );
+    fn, err = eval( tmpl, env );
+    assert( not err, err );
     ok, constructor = pcall( fn );
     assert( ok, constructor );
     
