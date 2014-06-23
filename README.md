@@ -9,6 +9,11 @@ Simple OOP Library For Lua
 luarocks install --from=http://mah0x211.github.io/rocks/ halo
 ```
 
+## Dependencies
+
+- lua-util https://github.com/mah0x211/lua-util
+
+
 ## Create Class
 
 ### Class = halo.class.ClassName;
