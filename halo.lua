@@ -588,6 +588,28 @@ local function hasImplicitSelfArg( method, info )
 end
 
 
+local function verifyMethod( name, fn )
+    local info;
+    
+    assert( 
+        typeof.string( name ) or typeof.finite( name ),
+        'method name must be type of string or finite number' 
+    );
+    assert( 
+        typeof.Function( fn ), 
+        ('method must be type of function'):format( name ) 
+    );
+    
+    info = debug.getinfo( fn );
+    assert( 
+        info.what == 'Lua', 
+        ('method %q must be lua function'):format( name )
+    );
+    
+    return info, hasImplicitSelfArg( fn, info );
+end
+
+
 local function getPackagePath()
     local i = 1;
     local info, prev;
@@ -727,7 +749,7 @@ local function createClass( _, className )
         end,
         --]]
         
-        -- declaration method
+        -- property/inheritance declaration or class exports
         __index = function( _, name )
             if typeof.string( name ) then
                 if name == 'exports' then
@@ -748,24 +770,10 @@ local function createClass( _, className )
         
         -- method declaration
         __newindex = function( _, name, fn )
-            local info, scope, proc;
+            local info, hasSelf = verifyMethod( name, fn );
+            local scope, proc;
             
-            assert( 
-                typeof.string( name ) or typeof.finite( name ),
-                'method name must be type of string or finite number' 
-            );
-            assert( 
-                typeof.Function( fn ), 
-                ('method must be type of function'):format( name ) 
-            );
-            
-            info = debug.getinfo( fn );
-            assert( 
-                info.what == 'Lua', 
-                ('method %q must be lua function'):format( name )
-            );
-            
-            if hasImplicitSelfArg( fn, info ) then
+            if hasSelf then
                 scope = 'instance';
                 proc = defineInstanceMethod;
             else
