@@ -739,15 +739,25 @@ local function createClass( _, className )
     
     -- return class declarator
     return setmetatable({},{
-        --[[ TODO: option
-        __call = function( self, ... )
-            inheritance = defineInheritance( inheritance, ... );
-            -- remove __call metamethod
-            rawset( getmetatable( self ), '__call', nil );
+        -- declare static methods by table
+        __call = function( self, tbl )
+            local name, fn, info, hasSelf;
             
-            return self;
+            assert( typeof.table( tbl ), 'method list must be type of table' );
+            
+            for name, fn in pairs( tbl ) do
+                info, hasSelf = verifyMethod( name, fn );
+                assert( 
+                    not hasSelf, 
+                    ('%q is not type of static method'):format( name )
+                );
+                -- define static method
+                defineStaticMethod( 
+                    rawget( defs, 'static' ), name, fn, info, 
+                    name:find( PTN_METAMETHOD ) 
+                );
+            end
         end,
-        --]]
         
         -- property/inheritance declaration or class exports
         __index = function( _, name )
