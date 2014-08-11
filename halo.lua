@@ -581,7 +581,7 @@ local function hasImplicitSelfArg( method, info )
         end
         
         src = table.concat( src, '\n' );
-        return src:find( '^%s*function%s[^:]+:' ) ~= nil;
+        return src:find( '^%s*function%s[^:%s]+%s*:%s*[^%s]+%s*[(]' ) ~= nil;
     end
     
     return false;
