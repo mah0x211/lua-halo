@@ -124,8 +124,6 @@ end
 
 
 local function setUpvalues( fn, upv, except )
-    local i,kv;
-    
     for i,kv in ipairs( upv ) do
         if kv.key ~= except then
             debug.setupvalue( fn, i, kv.val );
@@ -142,8 +140,6 @@ local function getEnv( fn )
             env = _G;
         end
     else
-        local k,v;
-        
         env = {};
         for k,v in pairs( getfenv( fn ) or {} ) do
             rawset( env, k, v );
@@ -260,7 +256,6 @@ end
 
 local function mergeRight( dest, src )
     local tbl = typeof.table( dest ) and dest or {};
-    local k,v;
     
     for k,v in pairs( src ) do
         if typeof.table( v ) then
@@ -275,7 +270,7 @@ end
 
 
 local function mergeLeft( dest, src )
-    local k,v,lv;
+    local lv;
     
     for k,v in pairs( src ) do
         lv = rawget( dest, k );
@@ -345,7 +340,7 @@ local function classExports( className, defs )
         rawget = rawget,
         rawset = rawset
     };
-    local tmpl, fn, ok, err, constructor, k;
+    local tmpl, fn, ok, err, constructor;
     
     -- create template
     preprocess( defs );
@@ -367,8 +362,6 @@ end
 
 
 local function checkNameConfliction( name, ... )
-    local _, tbl, key;
-    
     for _, tbl in pairs({...}) do
         for key in pairs( tbl ) do
             assert( 
@@ -384,7 +377,7 @@ local function removeInheritance( inheritance, list )
     local except = rawget( list, 'except' );
     
     if except then
-        local _, scope, methodName, tbl;
+        local tbl;
         
         assert( 
             typeof.table( except ),
@@ -419,7 +412,7 @@ local function defineInheritance( defs, tbl )
     local inheritance = {
         base = base
     };
-    local _, pkg, className, class, except;
+    local pkg, class;
     
     rawset( defs, 'inheritance', inheritance );
     for _, className in ipairs( tbl ) do
@@ -449,7 +442,7 @@ local function defineInheritance( defs, tbl )
 end
 
 
-local function defineMetamethod( target, name, fn, info )
+local function defineMetamethod( target, name, fn )
     local metamethod = rawget( target, 'metamethod' );
     
     assert( 
@@ -460,9 +453,9 @@ local function defineMetamethod( target, name, fn, info )
 end
 
 
-local function defineStaticMethod( static, name, fn, info, isMetamethod )
+local function defineStaticMethod( static, name, fn, isMetamethod )
     if isMetamethod then
-        defineMetamethod( static, name, fn, info );
+        defineMetamethod( static, name, fn );
     else
         local method = rawget( static, 'method' );
         local property = rawget( static, 'property' );
@@ -477,9 +470,9 @@ local function defineStaticMethod( static, name, fn, info, isMetamethod )
 end
 
 
-local function defineInstanceMethod( instance, name, fn, info, isMetamethod )
+local function defineInstanceMethod( instance, name, fn, isMetamethod )
     if isMetamethod then
-        defineMetamethod( instance, name, fn, info );
+        defineMetamethod( instance, name, fn );
     else
         local method = rawget( instance, 'method' );
         local property = rawget( instance, 'property' );
@@ -501,7 +494,7 @@ local function defineInstanceProperty( instance, tbl )
     local method = rawget( instance, 'method' );
     local public = rawget( property, 'public' );
     local protected = rawget( property, 'protected' );
-    local scope, target, key, val;
+    local target;
     
     -- public, protected
     for scope, tbl in pairs( tbl ) do
@@ -536,7 +529,6 @@ end
 local function defineStaticProperty( static, tbl )
     local property = rawget( static, 'property' );
     local method = rawget( static, 'method' );
-    local key,val;
     
     for key, val in pairs( tbl ) do
         assert( 
@@ -569,7 +561,6 @@ local function hasImplicitSelfArg( method, info )
         local head, tail = info.linedefined, info.lastlinedefined;
         local lineno = 0;
         local src = {};
-        local line;
         
         for line in io.lines( info.source:sub( 2 ) ) do
             lineno = lineno + 1;
@@ -606,7 +597,7 @@ local function verifyMethod( name, fn )
         ('method %q must be lua function'):format( name )
     );
     
-    return info, hasImplicitSelfArg( fn, info );
+    return hasImplicitSelfArg( fn, info );
 end
 
 
@@ -635,7 +626,6 @@ local function getPackageName()
     
     if src then
         local lpath = util.string.split( package.path, ';' );
-        local _, path;
         
         -- sort by length
         table.sort( lpath, function( a, b )
@@ -741,19 +731,19 @@ local function createClass( _, className )
     return setmetatable({},{
         -- declare static methods by table
         __call = function( self, tbl )
-            local name, fn, info, hasSelf;
+            local hasSelf;
             
             assert( typeof.table( tbl ), 'method list must be type of table' );
             
             for name, fn in pairs( tbl ) do
-                info, hasSelf = verifyMethod( name, fn );
+                hasSelf = verifyMethod( name, fn );
                 assert( 
                     not hasSelf, 
                     ('%q is not type of static method'):format( name )
                 );
                 -- define static method
                 defineStaticMethod( 
-                    rawget( defs, 'static' ), name, fn, info, 
+                    rawget( defs, 'static' ), name, fn, 
                     name:find( PTN_METAMETHOD ) 
                 );
             end
@@ -780,7 +770,7 @@ local function createClass( _, className )
         
         -- method declaration
         __newindex = function( _, name, fn )
-            local info, hasSelf = verifyMethod( name, fn );
+            local hasSelf = verifyMethod( name, fn );
             local scope, proc;
             
             if hasSelf then
@@ -792,7 +782,7 @@ local function createClass( _, className )
             end
             
             proc( 
-                rawget( defs, scope ), name, fn, info, 
+                rawget( defs, scope ), name, fn, 
                 name:find( PTN_METAMETHOD ) 
             );
         end
