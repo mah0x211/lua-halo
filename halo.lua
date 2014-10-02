@@ -476,14 +476,12 @@ local function defineInstanceMethod( instance, name, fn, isMetamethod )
     else
         local method = rawget( instance, 'method' );
         local property = rawget( instance, 'property' );
-        local public = rawget( property, 'public' );
-        local protected = rawget( property, 'protected' );
         
         assert( 
             name ~= 'constructor',
             ('%q is reserved word'):format( name )
         );
-        checkNameConfliction( name, method, public, protected );
+        checkNameConfliction( name, method, rawget( property, 'public' ) );
         rawset( method, name, fn );
     end
 end
