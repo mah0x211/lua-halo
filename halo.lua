@@ -155,8 +155,7 @@ local function cloneFunction( fn )
     local err;
     
     fn = string.dump( fn );
-    fn, err = eval( fn, env );
-    assert( not err, err );
+    fn = assert( eval( fn, env ) );
     setUpvalues( fn, upv );
     
     return fn, env;
@@ -311,7 +310,6 @@ local function postprocess( className, defs, constructor )
     local method = rawget( static, 'method' );
     local metamethod = rawget( static, 'metamethod' );
     local newtbl = {};
-    local _;
     
     -- set class constructor
     rawset( method, 'new', constructor );
