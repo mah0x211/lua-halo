@@ -87,12 +87,19 @@ end
 
 
 ]==];
+local TMPL_INDEX_METAMETHOD = [==[{
+            __index = function( _, ... )
+                METHOD_IDX[%q]( self, ... );
+            end
+        }]==];
 local TMPL_METHOD_METATABLE = [==[setmetatable(%s, %s)]==];
 local TMPL_CONSTRUCTOR = [==[
 "$PREPARE_METHOD$"
 
 local function Constructor(...)
-    local self = setmetatable(%s, %s);
+    local self;
+    
+    self = setmetatable(%s, %s);
     
     rawset( PROTECTED, self, %s );
     
@@ -229,10 +236,14 @@ local function makeTemplate( defs, env )
     -- render template of metatable
     opts.padding = 8;
     rawset( method, 'constructor', '$CONSTRUCTOR$' );
+    -- construct __index metamethod
     if mmindex then
+        local id = getFunctionId( mmindex );
+        -- set mmindex id
+        rawset( opts.udata.fnindex, id, mmindex );
         rawset( repls, '$METHOD$', TMPL_METHOD_METATABLE:format(
             inspect( method, opts ),
-            inspect( { __index = mmindex }, opts )
+            TMPL_INDEX_METAMETHOD:format( id )
         ));
     else
         rawset( repls, '$METHOD$', inspect( method, opts ) );
