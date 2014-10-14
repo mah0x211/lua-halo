@@ -89,7 +89,7 @@ end
 ]==];
 local TMPL_INDEX_METAMETHOD = [==[{
             __index = function( _, ... )
-                METHOD_IDX[%q]( self, ... );
+                return METHOD_IDX[%q]( self, ... );
             end
         }]==];
 local TMPL_METHOD_METATABLE = [==[setmetatable(%s, %s)]==];
