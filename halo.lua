@@ -736,6 +736,8 @@ local function createClass( _, className )
     
     -- return class declarator
     return setmetatable({},{
+        -- protect metatable
+        __metatable = 1,
         -- declare static methods by table
         __call = function( self, tbl )
             local hasSelf;
