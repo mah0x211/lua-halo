@@ -316,29 +316,19 @@ local function preprocess( defs )
 end
 
 
-local function postprocess( className, defs, constructor )
+local function postprocess( defs )
     local static = rawget( defs, 'static' );
-    local method = rawget( static, 'method' );
-    local metamethod = rawget( static, 'metamethod' );
     local newtbl = {};
     
-    -- set class constructor
-    rawset( method, 'new', constructor );
+    -- copy static property and methods
     mergeLeft( newtbl, rawget( static, 'property' ) );
-    mergeLeft( newtbl, method );
-    -- check metamethod
-    for _ in pairs( metamethod ) do
-        newtbl = setmetatable( newtbl, metamethod );
-        break;
-    end
-    -- add to registry table
-    rawset( REGISTRY, className, defs );
+    mergeLeft( newtbl, rawget( static, 'method' ) );
     
     return newtbl;
 end
 
 
-local function classExports( className, defs )
+local function classExports( pkgName, className, defs )
     local env = {
         METHOD_IDX = {},
         PROPERTY_IDX = {},
@@ -349,24 +339,37 @@ local function classExports( className, defs )
         rawget = rawget,
         rawset = rawset
     };
-    local tmpl, fn, ok, err, constructor;
-    
     -- create template
+    local tmpl, class, constructor, ok, err;
+    
     preprocess( defs );
     tmpl = makeTemplate( defs, env );
+    class = postprocess( defs );
     
     -- create constructor
-    fn, err = eval( tmpl, env );
+    constructor, err = eval( tmpl, env, 'class ' .. pkgName );
     assert( not err, err );
-    ok, constructor = pcall( fn );
+    ok, constructor = pcall( constructor );
     assert( ok, constructor );
+    
+    -- set constructor
+    defs.static.method.new = constructor;
+    class.new = constructor;
+    -- check metamethod
+    for _ in pairs( defs.static.metamethod ) do
+        setmetatable( class, defs.static.metamethod );
+        break;
+    end
     
     -- cleanup env
     for k in pairs( env ) do
         rawset( env, k, nil );
     end
     
-    return postprocess( className, defs, constructor );
+    -- add to registry table
+    rawset( REGISTRY, pkgName, defs );
+    
+    return class;
 end
 
 
@@ -766,7 +769,7 @@ local function createClass( _, className )
                         exports == nil,
                         ('class %q already exported'):format( className )
                     );
-                    exports = classExports( pkgName, defs );
+                    exports = classExports( pkgName, className, defs );
                     
                     return exports;
                 end
