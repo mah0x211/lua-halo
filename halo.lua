@@ -74,7 +74,7 @@ do
     local k, fn, env;
     
     for k,fn in pairs( METHOD_IDX ) do
-        fn, env = cloneFunction( fn );
+        fn, env = cloneFunction( fn, UPV_REPLACES );
         rawset( env, 'protected', getProtected );
         rawset( env, 'base', BASE );
         rawset( METHOD_IDX, k, fn );
@@ -130,9 +130,14 @@ local function getUpvalues( fn )
 end
 
 
-local function setUpvalues( fn, upv, except )
+local function setUpvalues( fn, upv, upvReplaces )
+    local repl;
+    
     for i,kv in ipairs( upv ) do
-        if kv.key ~= except then
+        repl = upvReplaces[kv.key];
+        if repl then
+            debug.setupvalue( fn, i, repl );
+        else
             debug.setupvalue( fn, i, kv.val );
         end
     end
@@ -157,13 +162,13 @@ local function getEnv( fn )
 end
 
 
-local function cloneFunction( fn )
+local function cloneFunction( fn, upvReplaces )
     local upv, env = getEnv( fn );
     local err;
     
     fn = string.dump( fn );
     fn = assert( eval( fn, env ) );
-    setUpvalues( fn, upv );
+    setUpvalues( fn, upv, upvReplaces );
     
     return fn, env;
 end
@@ -345,6 +350,9 @@ local function classExports( pkgName, className, defs )
     preprocess( defs );
     tmpl = makeTemplate( defs, env );
     class = postprocess( defs );
+    env.UPV_REPLACES = {
+        [className] = class
+    };
     
     -- create constructor
     constructor, err = eval( tmpl, env, 'class ' .. pkgName );
