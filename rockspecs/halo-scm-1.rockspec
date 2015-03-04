@@ -5,14 +5,13 @@ source = {
 }
 description = {
     summary = "Simple OOP Library For Lua",
-    detailed = [[]],
     homepage = "https://github.com/mah0x211/lua-halo", 
     license = "MIT/X11",
     maintainer = "Masatoshi Teruya"
 }
 dependencies = {
     "lua >= 5.1",
-    "util"
+    "util >= 1.3.3"
 }
 build = {
     type = "builtin",
