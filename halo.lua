@@ -134,7 +134,7 @@ local function setUpvalues( fn, upv, upvReplaces )
     local repl;
     
     for i,kv in ipairs( upv ) do
-        repl = upvReplaces[kv.key];
+        repl = upvReplaces[kv.val];
         if repl then
             debug.setupvalue( fn, i, repl );
         else
@@ -344,15 +344,17 @@ local function classExports( pkgName, className, defs )
         rawget = rawget,
         rawset = rawset
     };
-    -- create template
-    local tmpl, class, constructor, ok, err;
+    local UPV_REPLACES, tmpl, class, constructor, upv, ok, err, mt;
     
+    -- create template
     preprocess( defs );
     tmpl = makeTemplate( defs, env );
     class = postprocess( defs );
-    env.UPV_REPLACES = {
-        [className] = class
+    UPV_REPLACES = {
+        [defs.DECL] = class
     };
+    env.UPV_REPLACES = UPV_REPLACES;
+    defs.DECL = nil;
     
     -- create constructor
     constructor, err = eval( tmpl, env, 'class ' .. pkgName );
@@ -372,6 +374,23 @@ local function classExports( pkgName, className, defs )
     -- cleanup env
     for k in pairs( env ) do
         rawset( env, k, nil );
+    end
+    
+    -- class upvalue to replace with the created class. 
+    for k, fn in pairs( class ) do
+        if k ~= 'new' and type( fn ) == 'function' then
+            upv, env = getUpvalues( fn );
+            setUpvalues( fn, upv, UPV_REPLACES );
+            rawset( class, k, fn );
+        end
+    end
+    mt = getmetatable( class );
+    for k, fn in pairs( mt or {} ) do
+        if type( fn ) == 'function' then
+            upv, env = getUpvalues( fn );
+            setUpvalues( fn, upv, UPV_REPLACES );
+            rawset( mt, k, fn );
+        end
     end
     
     -- add to registry table
@@ -666,6 +685,7 @@ end
 local function createClass( _, className )
     local pkgName = getPackageName();
     local defs = {
+        DECL = {},
         static = {
             property = {},
             method = {},
@@ -746,7 +766,7 @@ local function createClass( _, className )
     };
     
     -- return class declarator
-    return setmetatable({},{
+    return setmetatable( defs.DECL, {
         -- protect metatable
         __metatable = 1,
         -- declare static methods by table
