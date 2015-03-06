@@ -333,7 +333,7 @@ local function postprocess( defs )
 end
 
 
-local function classExports( pkgName, className, defs )
+local function classExports( source, pkgName, className, defs )
     local env = {
         METHOD_IDX = {},
         PROPERTY_IDX = {},
@@ -357,7 +357,9 @@ local function classExports( pkgName, className, defs )
     defs.DECL = nil;
     
     -- create constructor
-    constructor, err = eval( tmpl, env, 'class ' .. pkgName );
+    constructor, err = eval(
+        tmpl, env, ('=load(halo:%s%s)'):format( pkgName, source )
+    );
     assert( not err, err );
     ok, constructor = pcall( constructor );
     assert( ok, constructor );
@@ -683,6 +685,7 @@ end
 
 
 local function createClass( _, className )
+    local source = debug.getinfo( 2, 'S' ).source;
     local pkgName = getPackageName();
     local defs = {
         DECL = {},
@@ -797,7 +800,7 @@ local function createClass( _, className )
                         exports == nil,
                         ('class %q already exported'):format( className )
                     );
-                    exports = classExports( pkgName, className, defs );
+                    exports = classExports( source, pkgName, className, defs );
                     
                     return exports;
                 end
