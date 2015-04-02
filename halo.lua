@@ -673,7 +673,9 @@ local function getPackageName()
         
         -- find filepath
         for _, path in ipairs( lpath ) do
-            path = src:match( path:gsub( '%?.+$', '(.+)[.]lua' ) );
+            path = path:gsub( '%-', '%%-' );
+            path = path:gsub( '%?.+$', '(.+)[.]lua' );
+            path = src:match( path );  
             if path then
                 return path:gsub( '/', '.' );
             end
