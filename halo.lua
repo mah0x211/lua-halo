@@ -34,6 +34,19 @@ local eval = util.eval;
 local typeof = util.typeof;
 local inspect = util.inspect;
 local REGISTRY = {};
+-- protected value container
+local PROTECTED = setmetatable({},{
+    __mode = 'k';
+});
+
+local function setProtected( instance, val )
+    PROTECTED[instance] = val;
+end
+
+local function getProtected( instance )
+    return PROTECTED[instance];
+end
+
 -- pattern
 local PTN_METAMETHOD = '^__.+';
 -- default
@@ -44,14 +57,9 @@ local error = error;
 local rawget = rawget;
 local rawset = rawset;
 local setmetatable = setmetatable;
+local setprotected = setprotected;
+local getprotected = getprotected;
 local PROPERTY_IDX = PROPERTY_IDX;
-local PROTECTED = setmetatable({},{
-    __mode = 'k';
-});
-
-local function getProtected( instance )
-    return rawget( PROTECTED, instance );
-end
 
 local function noNewIndex()
     error( 'attempted to assign to readonly property', 2 );
@@ -75,7 +83,7 @@ do
     
     for k,fn in pairs( METHOD_IDX ) do
         fn, env = cloneFunction( fn, UPV_REPLACES );
-        rawset( env, 'protected', getProtected );
+        rawset( env, 'protected', getprotected );
         rawset( env, 'base', BASE );
         rawset( METHOD_IDX, k, fn );
     end
@@ -101,7 +109,7 @@ local function Constructor(...)
     
     self = setmetatable(%s, %s);
     
-    rawset( PROTECTED, self, %s );
+    setprotected( self, %s );
     
     return self:init( ... );
 end
@@ -338,6 +346,8 @@ local function classExports( source, pkgName, className, defs )
         METHOD_IDX = {},
         PROPERTY_IDX = {},
         cloneFunction = cloneFunction,
+        getprotected = getProtected,
+        setprotected = setProtected,
         error = error,
         setmetatable = setmetatable,
         pairs = pairs,
