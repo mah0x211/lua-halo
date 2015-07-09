@@ -16,7 +16,10 @@ dependencies = {
 build = {
     type = "builtin",
     modules = {
-        halo = "halo.lua"
+        halo                = "halo.lua",
+        ['halo.util']       = 'lib/util.lua',
+        ['halo.registry']   = 'lib/registry.lua',
+        ['halo.class']      = 'lib/class.lua'
     }
 }
 
