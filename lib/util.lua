@@ -139,20 +139,6 @@ local function getUpvalues( fn )
 end
 
 
-local function setUpvalues( fn, upv, upvReplaces )
-    local repl;
-    
-    for i, kv in ipairs( upv ) do
-        repl = upvReplaces[kv.val];
-        if repl then
-            setupvalue( fn, i, repl );
-        else
-            setupvalue( fn, i, kv.val );
-        end
-    end
-end
-
-
 
 local function getEnv( fn )
     local upv, env = getUpvalues( fn );
@@ -206,12 +192,15 @@ local function mergeLeft( dest, src )
 end
 
 
-local function cloneFunction( fn, upvReplaces )
+local function cloneFunction( fn )
     local upv, env = getEnv( fn );
     
     fn = string.dump( fn );
     fn = assert( eval( fn, env ) );
-    setUpvalues( fn, upv, upvReplaces );
+    -- copy to upvalues
+    for i, kv in ipairs( upv ) do
+        setupvalue( fn, i, kv.val );
+    end
     
     return fn, env;
 end
@@ -221,9 +210,6 @@ return {
     getPackageName = getPackageName,
     hasImplicitSelfArg = hasImplicitSelfArg,
     getFunctionId = getFunctionId,
-    getUpvalues = getUpvalues,
-    setUpvalues = setUpvalues,
-    getEnv = getEnv,
     mergeRight = mergeRight,
     mergeLeft = mergeLeft,
     cloneFunction = cloneFunction,

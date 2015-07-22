@@ -250,11 +250,46 @@ local function verifyMethod( name, fn )
 end
 
 
+local function replaceDeclUpvalue2Class( defs, decl, class )
+    local idx, k, v;
+    local replaceUpvalue = function( tbl )
+        for _, node in ipairs({
+            'metamethod',
+            'method'
+        }) do
+            for _, fn in pairs( tbl[node] ) do
+                idx = 1;
+                k, v = 1, debug.getupvalue( fn, idx );
+                while k do
+                    if typeof.table( v ) then
+                        if v == decl then
+                            debug.setupvalue( fn, idx, class );
+                        elseif k == '_ENV' then
+                            for ek, ev in pairs( v ) do
+                                if typeof.table( ev ) and ev == decl then
+                                    v[ek] = class;
+                                end
+                            end
+                        end
+                    end
+                    
+                    -- check next upvalue
+                    idx = idx + 1;
+                    k, v = debug.getupvalue( fn, idx );
+                end
+            end
+        end
+    end
+    
+    replaceUpvalue( defs.instance );
+    replaceUpvalue( defs.static );
+end
+
+
 local function declClass( _, className )
     local source = debug.getinfo( 2, 'S' ).source;
     local pkgName = getPackageName();
     local defs = {
-        DECL = {},
         static = {
             property = {},
             method = {},
@@ -335,19 +370,19 @@ local function declClass( _, className )
     };
     
     -- return class declarator
-    return setmetatable( defs.DECL, {
+    local decl = {};
+    local class = {};
+    
+    setmetatable( decl, {
         -- protect metatable
         __metatable = 1,
         -- declare static methods by table
         __call = function( self, tbl )
-            local hasSelf;
-            
             assert( typeof.table( tbl ), 'method list must be type of table' );
             
             for name, fn in pairs( tbl ) do
-                hasSelf = verifyMethod( name, fn );
                 assert( 
-                    not hasSelf, 
+                    not verifyMethod( name, fn ), 
                     ('%q is not type of static method'):format( name )
                 );
                 -- define static method
@@ -366,7 +401,8 @@ local function declClass( _, className )
                         exports == nil,
                         ('class %q already exported'):format( className )
                     );
-                    exports = setClass( source, pkgName, defs );
+                    replaceDeclUpvalue2Class( defs, decl, class );
+                    exports = setClass( class, source, pkgName, defs );
                     
                     return exports;
                 end
@@ -396,6 +432,8 @@ local function declClass( _, className )
             );
         end
     });
+    
+    return decl;
 end
 
 

@@ -32,10 +32,7 @@ local eval = require('util').eval;
 local inspect = require('util').inspect;
 local getFunctionId = require('halo.util').getFunctionId;
 local cloneFunction = require('halo.util').cloneFunction;
-local setUpvalues = require('halo.util').setUpvalues;
-local getUpvalues = require('halo.util').getUpvalues;
 local mergeLeft = require('halo.util').mergeLeft;
-local getinfo = debug.getinfo;
 -- class definitions container
 local REGISTRY = {};
 
@@ -91,7 +88,7 @@ do
     local k, fn, env;
     
     for k,fn in pairs( METHOD_IDX ) do
-        fn, env = cloneFunction( fn, UPV_REPLACES );
+        fn, env = cloneFunction( fn );
         rawset( env, 'protected', getprotected );
         rawset( env, 'base', BASE );
         METHOD_IDX[k] = fn;
@@ -144,7 +141,7 @@ end
 
 
 local function makeTemplate( defs, env, className )
-    local METHOD_IDX = rawget( env, 'METHOD_IDX' );
+    local METHOD_IDX = env.METHOD_IDX;
     local opts = {
         padding = 4,
         callback = inspectHook,
@@ -157,7 +154,7 @@ local function makeTemplate( defs, env, className )
         padding = 4,
         callback = inspectHook,
         udata = {
-            fnindex = rawget( env, 'PROPERTY_IDX' ),
+            fnindex = env.PROPERTY_IDX,
             prefix = 'PROPERTY_IDX'
         }
     };
@@ -238,19 +235,16 @@ local function preprocess( defs )
 end
 
 
-local function postprocess( defs )
+local function postprocess( class, defs )
     local static = rawget( defs, 'static' );
-    local newtbl = {};
     
     -- copy static property and methods
-    mergeLeft( newtbl, rawget( static, 'property' ) );
-    mergeLeft( newtbl, rawget( static, 'method' ) );
-    
-    return newtbl;
+    mergeLeft( class, rawget( static, 'property' ) );
+    mergeLeft( class, rawget( static, 'method' ) );
 end
 
 
-local function setClass( source, pkgName, defs )
+local function setClass( class, source, pkgName, defs )
     local env = {
         METHOD_IDX = {},
         PROPERTY_IDX = {},
@@ -263,19 +257,13 @@ local function setClass( source, pkgName, defs )
         rawget = rawget,
         rawset = rawset
     };
-    local UPV_REPLACES, tmpl, class, constructor, upv, mt;
+    local tmpl, constructor;
     
     -- create template
     preprocess( defs );
     tmpl = makeTemplate( defs, env, pkgName );
-    
-    -- create and add class to upvalue
-    class = postprocess( defs );
-    UPV_REPLACES = {
-        [defs.DECL] = class
-    };
-    env.UPV_REPLACES = UPV_REPLACES;
-    defs.DECL = nil;
+    -- add static properties and methods into class table
+    postprocess( class, defs );
     
     -- create constructor
     constructor = assert(
@@ -295,23 +283,6 @@ local function setClass( source, pkgName, defs )
     -- cleanup env
     for k in pairs( env ) do
         rawset( env, k, nil );
-    end
-    
-    -- class upvalue to replace with the created class. 
-    for k, fn in pairs( class ) do
-        if k ~= 'new' and type( fn ) == 'function' then
-            upv, env = getUpvalues( fn );
-            setUpvalues( fn, upv, UPV_REPLACES );
-            rawset( class, k, fn );
-        end
-    end
-    mt = getmetatable( class );
-    for k, fn in pairs( mt or {} ) do
-        if type( fn ) == 'function' then
-            upv, env = getUpvalues( fn );
-            setUpvalues( fn, upv, UPV_REPLACES );
-            rawset( mt, k, fn );
-        end
     end
     
     -- add to registry table
