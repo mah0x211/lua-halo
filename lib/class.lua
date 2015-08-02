@@ -35,6 +35,9 @@ local hasImplicitSelfArg = require('halo.util').hasImplicitSelfArg;
 local mergeRight = require('halo.util').mergeRight;
 local setClass = require('halo.registry').setClass;
 local getClass = require('halo.registry').getClass;
+local getinfo = debug.getinfo;
+local getupvalue = debug.getupvalue;
+local setupvalue = debug.setupvalue;
 -- pattern
 local PTN_METAMETHOD = '^__.+';
 
@@ -240,7 +243,7 @@ local function verifyMethod( name, fn )
         ('method must be type of function'):format( name ) 
     );
     
-    info = debug.getinfo( fn );
+    info = getinfo( fn );
     assert( 
         info.what == 'Lua', 
         ('method %q must be lua function'):format( name )
@@ -259,11 +262,12 @@ local function replaceDeclUpvalue2Class( defs, decl, class )
         }) do
             for _, fn in pairs( tbl[node] ) do
                 idx = 1;
-                k, v = debug.getupvalue( fn, idx );
+                k, v = getupvalue( fn, idx );
                 while k do
+                    -- lookup table upvalue
                     if typeof.table( v ) then
                         if v == decl then
-                            debug.setupvalue( fn, idx, class );
+                            setupvalue( fn, idx, class );
                         elseif k == '_ENV' then
                             for ek, ev in pairs( v ) do
                                 if typeof.table( ev ) and ev == decl then
@@ -275,7 +279,7 @@ local function replaceDeclUpvalue2Class( defs, decl, class )
                     
                     -- check next upvalue
                     idx = idx + 1;
-                    k, v = debug.getupvalue( fn, idx );
+                    k, v = getupvalue( fn, idx );
                 end
             end
         end
@@ -287,7 +291,7 @@ end
 
 
 local function declClass( _, className )
-    local source = debug.getinfo( 2, 'S' ).source;
+    local source = getinfo( 2, 'S' ).source;
     local pkgName = getPackageName();
     local defs = {
         static = {
