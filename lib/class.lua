@@ -259,7 +259,7 @@ local function replaceDeclUpvalue2Class( defs, decl, class )
         }) do
             for _, fn in pairs( tbl[node] ) do
                 idx = 1;
-                k, v = 1, debug.getupvalue( fn, idx );
+                k, v = debug.getupvalue( fn, idx );
                 while k do
                     if typeof.table( v ) then
                         if v == decl then
