@@ -101,15 +101,22 @@ local function defineInheritance( defs, tbl )
             typeof.string( className ),
             'class name must be type of string'
         );
-        pkg = className:match( '^(.+)%.[^.]+$' );
-        if pkg and typeof.string( pkg ) then
-            require( pkg );
-        end
-        
+
         -- check registry table
         class = getClass( className );
-        assert( class, ('class %q is not defined'):format( className ) );
-        
+        if not class then
+            -- load package by require function
+            pkg = className:match( '^(.+)%.[^.]+$' );
+
+            if pkg and typeof.string( pkg ) then
+                require( pkg );
+            end
+
+            -- recheck registry table
+            class = getClass( className );
+            assert( class, ('class %q is not defined'):format( className ) );
+        end
+
         mergeRight( inheritance, class );
         rawset( 
             base, className, 
