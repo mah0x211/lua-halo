@@ -29,7 +29,6 @@
 --- file-scope variables
 local require = require;
 local eval = require('util').eval;
-local split = require('util.string').split;
 local type = type;
 local sort = table.sort;
 local concat = table.concat;
@@ -37,8 +36,38 @@ local getinfo = debug.getinfo;
 local getlocal = debug.getlocal;
 local getupvalue = debug.getupvalue;
 local setupvalue = debug.setupvalue;
+local strfind = string.find;
+local strsub = string.sub;
 --- constants
 local LUA_VERS = tonumber( _VERSION:match( 'Lua (.+)$' ) );
+
+
+--- split
+-- @param str
+-- @param pat
+-- @return arr
+local function split( str, pat )
+    local arr = {};
+    local idx = 0;
+    local cur = 1;
+    local last = #str + 1;
+    local head, tail = strfind( str, pat, cur );
+
+    while head do
+        if head ~= cur then
+            idx = idx + 1;
+            arr[idx] = strsub( str, cur, head - 1 );
+        end
+        cur = tail + 1;
+        head, tail = strfind( str, pat, cur );
+    end
+
+    if cur < last then
+        arr[idx + 1] = strsub( str, cur );
+    end
+
+    return arr;
+end
 
 
 local function getPackagePath()
