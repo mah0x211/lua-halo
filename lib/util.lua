@@ -140,8 +140,6 @@ local function hasImplicitSelfArg( method, info )
         src = concat( src, '\n' );
         return src:find( '^%s*function%s[^:%s]+%s*:%s*[^%s]+%s*[(]' ) ~= nil;
     end
-
-    return false;
 end
 
 
