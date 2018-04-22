@@ -1,17 +1,17 @@
 --[[
-  
+
   Copyright (C) 2014-2015 Masatoshi Teruya
- 
+
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
   in the Software without restriction, including without limitation the rights
   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
   copies of the Software, and to permit persons to whom the Software is
   furnished to do so, subject to the following conditions:
- 
+
   The above copyright notice and this permission notice shall be included in
   all copies or substantial portions of the Software.
- 
+
   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
@@ -19,14 +19,14 @@
   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
   THE SOFTWARE.
-  
-  
+
+
   lib/registry.lua
   lua-halo
   Created by Masatoshi Teruya on 15/07/08.
-  
---]]
 
+--]]
+--- file-scope variables
 local require = require;
 local eval = require('util').eval;
 local inspect = require('util').inspect;
@@ -86,14 +86,14 @@ do
         })
     });
     local k, fn, env;
-    
+
     for k,fn in pairs( METHOD_IDX ) do
         fn, env = cloneFunction( fn );
         rawset( env, 'protected', getprotected );
         rawset( env, 'base', BASE );
         METHOD_IDX[k] = fn;
     end
-    
+
     for k,fn in pairs("$BASE$") do
         rawset( BASE_IDX, k, fn );
     end
@@ -112,11 +112,11 @@ local TMPL_CONSTRUCTOR = [==[
 
 local function Constructor(...)
     local self;
-    
+
     self = setmetatable(%s, %s);
-    
+
     setprotected( self, %s );
-    
+
     return self:init( ... );
 end
 
@@ -127,15 +127,15 @@ return Constructor;
 
 -- inspect hook
 local function inspectHook( value, valueType, valueFor, key, ctx )
-    -- should add function-id to FNIDX table 
+    -- should add function-id to FNIDX table
     if valueFor == 'value' and valueType == 'function' then
         local id = getFunctionId( value );
-        
+
         rawset( ctx.fnindex, id, value );
-        
+
         return ('%s[%q]'):format( ctx.prefix, id ), true;
     end
-    
+
     return value;
 end
 
@@ -171,11 +171,11 @@ local function makeTemplate( defs, env, className )
     local protected = rawget( property, 'protected' );
     local mmindex = rawget( metamethod, '__index' );
     local tmpl;
-    
+
     if base then
         rawset( repls, '$BASE$', inspect( base or {}, opts ) )
     end
-    
+
     -- render template of constructor
     rawset( metamethod, '__index', '$METHOD$' );
     tmpl = TMPL_CONSTRUCTOR:format(
@@ -202,14 +202,14 @@ local function makeTemplate( defs, env, className )
     end
     rawset( method, 'constructor', nil );
     rawset( metamethod, '__index', mmindex );
-    
+
     -- render template of private variables
     opts.padding = 0;
-    rawset( 
-        repls, '$PREPARE_METHOD$', 
+    rawset(
+        repls, '$PREPARE_METHOD$',
         TMPL_PREPATE_METHOD:format( className, inspect( METHOD_IDX, opts ) )
     );
-    
+
     -- replace templates
     return tmpl:gsub( '"(%$[^$"]+%$)"', repls )
                :gsub( '"(%$[^$"]+%$)"', repls );
@@ -221,13 +221,13 @@ local function preprocess( defs )
     local inheritance = rawget( defs, 'inheritance' );
     local instance = rawget( defs, 'instance' );
     local method = rawget( instance, 'method' );
-    
+
     -- remove inheritance table
     if inheritance then
         rawset( defs, 'inheritance', nil );
         mergeLeft( defs, inheritance );
     end
-    
+
     -- set default init function
     if not rawget( method, 'init' ) then
         rawset( method, 'init', DEFAULT_INIT );
@@ -237,7 +237,7 @@ end
 
 local function postprocess( class, defs )
     local static = rawget( defs, 'static' );
-    
+
     -- copy static property and methods
     mergeLeft( class, rawget( static, 'property' ) );
     mergeLeft( class, rawget( static, 'method' ) );
@@ -258,19 +258,19 @@ local function setClass( class, source, pkgName, defs )
         rawset = rawset
     };
     local tmpl, constructor;
-    
+
     -- create template
     preprocess( defs );
     tmpl = makeTemplate( defs, env, pkgName );
     -- add static properties and methods into class table
     postprocess( class, defs );
-    
+
     -- create constructor
     constructor = assert(
         eval( tmpl, env, ('=load(halo:%s%s)'):format( pkgName, source ) )
     );
     constructor = select( -1, assert( pcall( constructor ) ) );
-    
+
     -- set constructor
     defs.static.method.new = constructor;
     class.new = constructor;
@@ -279,15 +279,15 @@ local function setClass( class, source, pkgName, defs )
         setmetatable( class, defs.static.metamethod );
         break;
     end
-    
+
     -- cleanup env
     for k in pairs( env ) do
         rawset( env, k, nil );
     end
-    
+
     -- add to registry table
     rawset( REGISTRY, pkgName, defs );
-    
+
     return class;
 end
 
