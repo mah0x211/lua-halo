@@ -28,7 +28,7 @@
 --]]
 --- file-scope variables
 local require = require;
-local eval = require('util').eval;
+local loadchunk = require('loadchunk').string;
 local type = type;
 local sort = table.sort;
 local concat = table.concat;
@@ -224,7 +224,7 @@ local function cloneFunction( fn )
     local upv, env = getEnv( fn );
 
     fn = string.dump( fn );
-    fn = assert( eval( fn, env ) );
+    fn = assert( loadchunk( fn, env ) );
     -- copy to upvalues
     for i, kv in ipairs( upv ) do
         setupvalue( fn, i, kv.val );

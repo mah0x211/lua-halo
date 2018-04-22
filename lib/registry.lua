@@ -28,7 +28,7 @@
 --]]
 --- file-scope variables
 local require = require;
-local eval = require('util').eval;
+local loadchunk = require('loadchunk').string;
 local inspect = require('util').inspect;
 local getFunctionId = require('halo.util').getFunctionId;
 local cloneFunction = require('halo.util').cloneFunction;
@@ -267,7 +267,7 @@ local function setClass( class, source, pkgName, defs )
 
     -- create constructor
     constructor = assert(
-        eval( tmpl, env, ('=load(halo:%s%s)'):format( pkgName, source ) )
+        loadchunk( tmpl, env, ('=load(halo:%s%s)'):format( pkgName, source ) )
     );
     constructor = select( -1, assert( pcall( constructor ) ) );
 
