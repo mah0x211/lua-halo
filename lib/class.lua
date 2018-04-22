@@ -26,20 +26,31 @@
   Created by Masatoshi Teruya on 15/07/08.
 
 --]]
-
+--- file-scope variables
 local require = require;
 local tableClone = require('util.table').clone;
-local typeof = require('util').typeof;
 local getPackageName = require('halo.util').getPackageName;
 local hasImplicitSelfArg = require('halo.util').hasImplicitSelfArg;
 local mergeRight = require('halo.util').mergeRight;
 local setClass = require('halo.registry').setClass;
 local getClass = require('halo.registry').getClass;
+local type = type;
 local getinfo = debug.getinfo;
 local getupvalue = debug.getupvalue;
 local setupvalue = debug.setupvalue;
--- pattern
+--- constants
+local INF_POS = math.huge;
+local INF_NEG = -INF_POS;
+--- pattern
 local PTN_METAMETHOD = '^__.+';
+
+
+--- isFinite
+-- @param arg
+-- @return ok
+local function isFinite( arg )
+    return type( arg ) == 'number' and ( arg < INF_POS and arg > INF_NEG );
+end
 
 
 local function checkNameConfliction( name, ... )
@@ -61,14 +72,14 @@ local function removeInheritance( inheritance, list )
         local tbl;
 
         assert(
-            typeof.table( except ),
+            type( except ) == 'table',
             'except must be type of table'
         );
 
         for _, scope in ipairs({ 'static', 'instance' }) do
             for _, methodName in ipairs( rawget( except, scope ) or {} ) do
                 assert(
-                    typeof.string( methodName ) or typeof.finite( methodName ),
+                    type( methodName ) == 'string' or isFinite( methodName ),
                     ('method name must be type of string or finite number')
                     :format( methodName )
                 );
@@ -79,7 +90,7 @@ local function removeInheritance( inheritance, list )
                     tbl = rawget( tbl, 'method' );
                 end
 
-                if typeof.Function( rawget( tbl, methodName ) ) then
+                if type( rawget( tbl, methodName ) ) == 'function' then
                     rawset( tbl, methodName, nil );
                 end
             end
@@ -98,7 +109,7 @@ local function defineInheritance( defs, tbl )
     rawset( defs, 'inheritance', inheritance );
     for _, className in ipairs( tbl ) do
         assert(
-            typeof.string( className ),
+            type( className ) == 'string',
             'class name must be type of string'
         );
 
@@ -108,7 +119,7 @@ local function defineInheritance( defs, tbl )
             -- load package by require function
             pkg = className:match( '^(.+)%.[^.]+$' );
 
-            if pkg and typeof.string( pkg ) then
+            if pkg and type( pkg ) == 'string' then
                 require( pkg );
             end
 
@@ -191,7 +202,7 @@ local function defineInstanceProperty( instance, tbl )
         );
         for key, val in pairs( tbl ) do
             assert(
-                typeof.string( key ) or typeof.finite( key ),
+                type( key ) == 'string' or isFinite( key ),
                 'field name must be type of string or finite number'
             );
             assert(
@@ -200,7 +211,7 @@ local function defineInstanceProperty( instance, tbl )
             );
             checkNameConfliction( key, public, protected, method );
             -- set field
-            if typeof.table( val ) then
+            if type( val ) == 'table' then
                 rawset( target, key, tableClone( val ) );
             else
                 rawset( target, key, val );
@@ -218,7 +229,7 @@ local function defineStaticProperty( static, tbl )
 
     for key, val in pairs( tbl ) do
         assert(
-            typeof.string( key ) or typeof.finite( key ),
+            type( key ) == 'string' or isFinite( key ),
             'field name must be type of string or finite number'
         );
         assert(
@@ -227,7 +238,7 @@ local function defineStaticProperty( static, tbl )
         );
         checkNameConfliction( key, property, method );
         -- set field
-        if typeof.table( val ) then
+        if type( val ) == 'table' then
             rawset( property, key, tableClone( val ) );
         else
             rawset( property, key, val );
@@ -242,11 +253,11 @@ local function verifyMethod( name, fn )
     local info;
 
     assert(
-        typeof.string( name ) or typeof.finite( name ),
+        type( name ) == 'string' or isFinite( name ),
         'method name must be type of string or finite number'
     );
     assert(
-        typeof.Function( fn ),
+        type( fn ) == 'function',
         ('method must be type of function'):format( name )
     );
 
@@ -272,12 +283,12 @@ local function replaceDeclUpvalue2Class( defs, decl, class )
                 k, v = getupvalue( fn, idx );
                 while k do
                     -- lookup table upvalue
-                    if typeof.table( v ) then
+                    if type( v ) == 'table' then
                         if v == decl then
                             setupvalue( fn, idx, class );
                         elseif k == '_ENV' then
                             for ek, ev in pairs( v ) do
-                                if typeof.table( ev ) and ev == decl then
+                                if type( ev ) == 'table' and ev == decl then
                                     v[ek] = class;
                                 end
                             end
@@ -330,7 +341,7 @@ local function declClass( _, className )
     end
 
     assert(
-        typeof.string( className ),
+        type( className ) == 'string',
         'class name must be type of string'
     );
     assert(
@@ -347,7 +358,7 @@ local function declClass( _, className )
                 'inheritance already defined'
             );
             assert(
-                typeof.table( tbl ),
+                type( tbl ) == 'table',
                 'inheritance must be type of table'
             );
             rawset( defined, 'inheritance', defineInheritance( defs, tbl ) );
@@ -373,7 +384,7 @@ local function declClass( _, className )
                 ('%q property already defined'):format( scope )
             );
             assert(
-                typeof.table( tbl ),
+                type( tbl ) == 'table',
                 'property must be type of table'
             );
             rawset( defined, scope, proc( rawget( defs, scope ), tbl ) );
@@ -389,7 +400,9 @@ local function declClass( _, className )
         __metatable = 1,
         -- declare static methods by table
         __call = function( self, tbl )
-            assert( typeof.table( tbl ), 'method list must be type of table' );
+            assert(
+                type( tbl ) == 'table', 'method list must be type of table'
+            );
 
             for name, fn in pairs( tbl ) do
                 assert(
@@ -406,7 +419,7 @@ local function declClass( _, className )
 
         -- property/inheritance declaration or class exports
         __index = function( _, name )
-            if typeof.string( name ) then
+            if type( name ) == 'string' then
                 if name == 'exports' then
                     assert(
                         exports == nil,

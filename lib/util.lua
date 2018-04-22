@@ -26,18 +26,19 @@
   Created by Masatoshi Teruya on 15/07/08.
 
 --]]
-
-local LUA_VERS = tonumber( _VERSION:match( 'Lua (.+)$' ) );
+--- file-scope variables
 local require = require;
 local eval = require('util').eval;
-local typeof = require('util.typeof');
 local split = require('util.string').split;
+local type = type;
 local sort = table.sort;
 local concat = table.concat;
 local getinfo = debug.getinfo;
 local getlocal = debug.getlocal;
 local getupvalue = debug.getupvalue;
 local setupvalue = debug.setupvalue;
+--- constants
+local LUA_VERS = tonumber( _VERSION:match( 'Lua (.+)$' ) );
 
 
 local function getPackagePath()
@@ -159,10 +160,10 @@ end
 
 
 local function mergeRight( dest, src )
-    local tbl = typeof.table( dest ) and dest or {};
+    local tbl = type( dest ) == 'table' and dest or {};
 
     for k,v in pairs( src ) do
-        if typeof.table( v ) then
+        if type( v ) == 'table' then
             rawset( tbl, k, mergeRight( tbl and rawget( tbl, k ), v ) );
         else
             rawset( tbl, k, v );
@@ -179,13 +180,13 @@ local function mergeLeft( dest, src )
     for k,v in pairs( src ) do
         lv = rawget( dest, k );
         if not lv then
-            if typeof.table( v ) then
+            if type( v ) == 'table' then
                 rawset( dest, k, mergeRight( nil, v ) );
             else
                 rawset( dest, k, v );
             end
         -- merge table
-        elseif typeof.table( v ) and typeof.table( lv ) then
+        elseif type( v ) == 'table' and type( lv ) == 'table' then
             mergeLeft( lv, v );
         end
     end

@@ -26,13 +26,17 @@
   Created by Masatoshi Teruya on 14/05/28.
 
 --]]
-
+--- file-scope variables
 local require = require;
-local typeof = require('util').typeof;
+local type = type;
+local rawget = rawget;
+local getmetatable = getmetatable;
+local setmetatable = setmetatable;
+
 
 local function instanceof( instance, class )
     local mt = getmetatable( instance );
-    return mt ~= nil and typeof.table( class ) and
+    return mt ~= nil and type( class ) == 'table' and
            rawget( mt.__index, 'constructor' ) == class.new;
 end
 
