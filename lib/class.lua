@@ -28,7 +28,7 @@
 --]]
 --- file-scope variables
 local require = require;
-local tableClone = require('util.table').clone;
+local cloneTable = require('halo.util').cloneTable;
 local getPackageName = require('halo.util').getPackageName;
 local hasImplicitSelfArg = require('halo.util').hasImplicitSelfArg;
 local mergeRight = require('halo.util').mergeRight;
@@ -212,7 +212,7 @@ local function defineInstanceProperty( instance, tbl )
             checkNameConfliction( key, public, protected, method );
             -- set field
             if type( val ) == 'table' then
-                rawset( target, key, tableClone( val ) );
+                rawset( target, key, cloneTable( val ) );
             else
                 rawset( target, key, val );
             end
@@ -239,7 +239,7 @@ local function defineStaticProperty( static, tbl )
         checkNameConfliction( key, property, method );
         -- set field
         if type( val ) == 'table' then
-            rawset( property, key, tableClone( val ) );
+            rawset( property, key, cloneTable( val ) );
         else
             rawset( property, key, val );
         end
