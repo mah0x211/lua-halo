@@ -29,12 +29,22 @@
 --- file-scope variables
 local require = require;
 local loadchunk = require('loadchunk').string;
-local inspect = require('util').inspect;
+local dump = require('dump');
 local getFunctionId = require('halo.util').getFunctionId;
 local cloneFunction = require('halo.util').cloneFunction;
 local mergeLeft = require('halo.util').mergeLeft;
--- class definitions container
+local select = select;
+local assert = assert;
+local pcall = pcall;
+local rawget = rawget;
+local rawset = rawset;
+local strgsub = string.gsub;
+local strformat = string.format;
+
+
+--- class definitions container
 local REGISTRY = {};
+
 
 -- protected value container
 local PROTECTED = setmetatable({},{
@@ -125,15 +135,15 @@ return Constructor;
 
 
 
--- inspect hook
-local function inspectHook( value, valueType, valueFor, key, ctx )
+-- dump hook
+local function dumpFilter( value, _, valueType, valueFor, _, ctx )
     -- should add function-id to FNIDX table
-    if valueFor == 'value' and valueType == 'function' then
+    if valueFor == 'val' and valueType == 'function' then
         local id = getFunctionId( value );
 
         rawset( ctx.fnindex, id, value );
 
-        return ('%s[%q]'):format( ctx.prefix, id ), true;
+        return strformat( '%s[%q]', ctx.prefix, id ), true;
     end
 
     return value;
@@ -143,20 +153,12 @@ end
 local function makeTemplate( defs, env, className )
     local METHOD_IDX = env.METHOD_IDX;
     local opts = {
-        padding = 4,
-        callback = inspectHook,
-        udata = {
-            fnindex = METHOD_IDX,
-            prefix = 'METHOD_IDX'
-        }
+        fnindex = METHOD_IDX,
+        prefix = 'METHOD_IDX'
     };
     local propertyOpts = {
-        padding = 4,
-        callback = inspectHook,
-        udata = {
-            fnindex = env.PROPERTY_IDX,
-            prefix = 'PROPERTY_IDX'
-        }
+        fnindex = env.PROPERTY_IDX,
+        prefix = 'PROPERTY_IDX'
     };
     local repls = {
         ['$CONSTRUCTOR$']   = 'Constructor',
@@ -173,15 +175,15 @@ local function makeTemplate( defs, env, className )
     local tmpl;
 
     if base then
-        rawset( repls, '$BASE$', inspect( base or {}, opts ) )
+        repls['$BASE$'] = dump( base or {}, nil, 4, dumpFilter,  opts );
     end
 
     -- render template of constructor
     rawset( metamethod, '__index', '$METHOD$' );
-    tmpl = TMPL_CONSTRUCTOR:format(
-        inspect( public, propertyOpts ),
-        inspect( metamethod, opts ),
-        inspect( protected, propertyOpts )
+    tmpl = strformat( TMPL_CONSTRUCTOR,
+        dump( public, nil, 4, dumpFilter, propertyOpts ),
+        dump( metamethod, nil, 4, dumpFilter, opts ),
+        dump( protected, nil, 4, dumpFilter, propertyOpts )
     );
     rawset( metamethod, '__index', nil );
 
@@ -192,27 +194,25 @@ local function makeTemplate( defs, env, className )
     if mmindex then
         local id = getFunctionId( mmindex );
         -- set mmindex id
-        rawset( opts.udata.fnindex, id, mmindex );
-        rawset( repls, '$METHOD$', TMPL_METHOD_METATABLE:format(
-            inspect( method, opts ),
-            TMPL_INDEX_METAMETHOD:format( id )
-        ));
+        rawset( opts.fnindex, id, mmindex );
+        repls['$METHOD$'] = strformat( TMPL_METHOD_METATABLE,
+                                       dump( method, nil, 4, dumpFilter, opts ),
+                                       strformat( TMPL_INDEX_METAMETHOD, id ) );
     else
-        rawset( repls, '$METHOD$', inspect( method, opts ) );
+        repls['$METHOD$'] = dump( method, nil, 4, dumpFilter, opts );
     end
     rawset( method, 'constructor', nil );
     rawset( metamethod, '__index', mmindex );
 
     -- render template of private variables
     opts.padding = 0;
-    rawset(
-        repls, '$PREPARE_METHOD$',
-        TMPL_PREPATE_METHOD:format( className, inspect( METHOD_IDX, opts ) )
-    );
+    repls['$PREPARE_METHOD$'] = strformat( TMPL_PREPATE_METHOD, className,
+                                           dump( METHOD_IDX, nil, 4, dumpFilter,
+                                                 opts ) );
 
     -- replace templates
-    return tmpl:gsub( '"(%$[^$"]+%$)"', repls )
-               :gsub( '"(%$[^$"]+%$)"', repls );
+    tmpl = strgsub( tmpl, '"(%$[^$"]+%$)"', repls );
+    return strgsub( tmpl, '"(%$[^$"]+%$)"', repls );
 end
 
 
@@ -267,7 +267,7 @@ local function setClass( class, source, pkgName, defs )
 
     -- create constructor
     constructor = assert(
-        loadchunk( tmpl, env, ('=load(halo:%s%s)'):format( pkgName, source ) )
+        loadchunk( tmpl, env, strformat( '=load(halo:%s%s)', pkgName, source ) )
     );
     constructor = select( -1, assert( pcall( constructor ) ) );
 
@@ -275,9 +275,8 @@ local function setClass( class, source, pkgName, defs )
     defs.static.method.new = constructor;
     class.new = constructor;
     -- check metamethod
-    for _ in pairs( defs.static.metamethod ) do
+    if next( defs.static.metamethod ) then
         setmetatable( class, defs.static.metamethod );
-        break;
     end
 
     -- cleanup env
@@ -286,19 +285,19 @@ local function setClass( class, source, pkgName, defs )
     end
 
     -- add to registry table
-    rawset( REGISTRY, pkgName, defs );
+    REGISTRY[pkgName] = defs;
 
     return class;
 end
 
 
 local function getClass( className )
-    return rawget( REGISTRY, className );
+    return REGISTRY[className];
 end
 
 
 local function printRegistry()
-    print( inspect( REGISTRY ) );
+    print( dump( REGISTRY ) );
 end
 
 
