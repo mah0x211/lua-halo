@@ -234,6 +234,44 @@ local function cloneFunction( fn )
 end
 
 
+local function cloneTable( val )
+    local ctbl = {};
+    local idx = 1;
+    local stack = {
+        { tbl = ctbl, kvp = val }
+    }
+
+    while idx > 0 do
+        local top = stack[idx].top;
+        local key = stack[idx].key;
+        local tbl = stack[idx].tbl;
+        local kvp = stack[idx].kvp;
+
+        idx = idx - 1;
+        for k, v in pairs( kvp ) do
+            if type( v ) == 'table' then
+                idx = idx + 1;
+                stack[idx] = {
+                    top = tbl,
+                    key = k,
+                    tbl = {},
+                    kvp = v
+                };
+            else
+                tbl[k] = v;
+            end
+        end
+
+        -- set clone-table at parent-table
+        if top then
+            top[key] = tbl;
+        end
+    end
+
+    return ctbl;
+end
+
+
 return {
     getPackageName = getPackageName,
     hasImplicitSelfArg = hasImplicitSelfArg,
@@ -241,5 +279,6 @@ return {
     mergeRight = mergeRight,
     mergeLeft = mergeLeft,
     cloneFunction = cloneFunction,
+    cloneTable = cloneTable,
 };
 
