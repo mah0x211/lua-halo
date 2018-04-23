@@ -35,9 +35,16 @@ local mergeRight = require('halo.util').mergeRight;
 local setClass = require('halo.registry').setClass;
 local getClass = require('halo.registry').getClass;
 local type = type;
+local assert = assert;
+local pairs = pairs;
+local ipairs = ipairs;
+local rawget = rawget;
+local rawset = rawset;
 local getinfo = debug.getinfo;
 local getupvalue = debug.getupvalue;
 local setupvalue = debug.setupvalue;
+local strformat = string.format;
+local strfind = string.find;
 --- constants
 local INF_POS = math.huge;
 local INF_NEG = -INF_POS;
@@ -58,7 +65,7 @@ local function checkNameConfliction( name, ... )
         for key in pairs( tbl ) do
             assert(
                 rawequal( key, name ) == false,
-                ('field %q already defined'):format( name )
+                strformat( 'field %q already defined', name )
             );
         end
     end
@@ -80,11 +87,10 @@ local function removeInheritance( inheritance, list )
             for _, methodName in ipairs( rawget( except, scope ) or {} ) do
                 assert(
                     type( methodName ) == 'string' or isFinite( methodName ),
-                    ('method name must be type of string or finite number')
-                    :format( methodName )
+                    'method name must be type of string or finite number'
                 );
                 tbl = rawget( inheritance, scope );
-                if methodName:find( PTN_METAMETHOD ) then
+                if strfind( methodName, PTN_METAMETHOD ) then
                     tbl = rawget( tbl, 'metamethod' );
                 elseif scope == 'instance' then
                     tbl = rawget( tbl, 'method' );
@@ -333,7 +339,7 @@ local function declClass( _, className )
     };
     local exports;
 
-    -- append package-name
+    -- prepend package-name
     if pkgName then
         pkgName = pkgName .. '.' .. className;
     else
@@ -344,19 +350,22 @@ local function declClass( _, className )
         type( className ) == 'string',
         'class name must be type of string'
     );
+    -- package.class already registered
     assert(
         getClass( pkgName ) == nil,
-        ('class %q already defined'):format( className )
+        strformat( 'class %q already defined', className )
     );
 
     -- declaration method table
     local DECLARATOR = {
         -- define inheritance
         inherits = function( tbl )
+            -- cannot be defined twice
             assert(
                 rawget( defined, 'inheritance' ) == false,
                 'inheritance already defined'
             );
+            -- invalid argument
             assert(
                 type( tbl ) == 'table',
                 'inheritance must be type of table'
@@ -381,7 +390,7 @@ local function declClass( _, className )
 
             assert(
                 rawget( defined, scope ) == false,
-                ('%q property already defined'):format( scope )
+                strformat( '%q property already defined', scope )
             );
             assert(
                 type( tbl ) == 'table',
@@ -399,7 +408,7 @@ local function declClass( _, className )
         -- protect metatable
         __metatable = 1,
         -- declare static methods by table
-        __call = function( self, tbl )
+        __call = function( _, tbl )
             assert(
                 type( tbl ) == 'table', 'method list must be type of table'
             );

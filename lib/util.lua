@@ -30,14 +30,26 @@
 local require = require;
 local loadchunk = require('loadchunk').string;
 local type = type;
-local sort = table.sort;
-local concat = table.concat;
+local assert = assert;
+local tostring = tostring;
+local getfenv = getfenv;
+local rawget = rawget;
+local rawset = rawset;
+local pairs = pairs;
+local ipairs = ipairs;
+local iolines = io.lines;
+local tblsort = table.sort;
+local tblconcat = table.concat;
 local getinfo = debug.getinfo;
 local getlocal = debug.getlocal;
 local getupvalue = debug.getupvalue;
 local setupvalue = debug.setupvalue;
 local strfind = string.find;
 local strsub = string.sub;
+local strgsub = string.gsub;
+local strmatch = string.match;
+local strformat = string.format;
+local strdump = string.dump;
 --- constants
 local LUA_VERS = tonumber( _VERSION:match( 'Lua (.+)$' ) );
 
@@ -102,14 +114,14 @@ local function getPackageName()
         local lpath = split( package.path, ';' );
 
         -- sort by length
-        sort( lpath, sortByLength );
+        tblsort( lpath, sortByLength );
         -- find filepath
         for _, path in ipairs( lpath ) do
-            path = path:gsub( '%-', '%%-' );
-            path = path:gsub( '%?.+$', '(.+)[.]lua' );
-            path = src:match( path );
+            path = strgsub( path, '%-', '%%-' );
+            path = strgsub( path, '%?.+$', '(.+)[.]lua' );
+            path = strmatch( src, path );
             if path then
-                return path:gsub( '/', '.' );
+                return strgsub( path, '/', '.' );
             end
         end
     end
@@ -128,7 +140,7 @@ local function hasImplicitSelfArg( method, info )
         local lineno = 0;
         local src = {};
 
-        for line in io.lines( info.source:sub( 2 ) ) do
+        for line in iolines( strsub( info.source, 2 ) ) do
             lineno = lineno + 1;
             if lineno > tail then
                 break;
@@ -137,14 +149,14 @@ local function hasImplicitSelfArg( method, info )
             end
         end
 
-        src = concat( src, '\n' );
-        return src:find( '^%s*function%s[^:%s]+%s*:%s*[^%s]+%s*[(]' ) ~= nil;
+        src = tblconcat( src, '\n' );
+        return strfind( src, '^%s*function%s[^:%s]+%s*:%s*[^%s]+%s*[(]' ) ~= nil;
     end
 end
 
 
 local function getFunctionId( func )
-    return ('%s'):format( tostring(func) ):gsub( '^function: 0x0*', '' );
+    return strformat('%s', strgsub( tostring(func), '^function: 0x0*', '' ) );
 end
 
 
@@ -223,7 +235,7 @@ end
 local function cloneFunction( fn )
     local upv, env = getEnv( fn );
 
-    fn = string.dump( fn );
+    fn = strdump( fn );
     fn = assert( loadchunk( fn, env ) );
     -- copy to upvalues
     for i, kv in ipairs( upv ) do
