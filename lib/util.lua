@@ -83,18 +83,18 @@ end
 
 
 local function getPackagePath()
-    local i = 1;
-    local info, prev;
+    local lv = 1;
+    local prev;
 
     repeat
-        info = getinfo( i, 'nS' );
+        local info = getinfo( lv, 'nS' );
+
         if info then
-            if rawget( info, 'what' ) == 'C' and
-               rawget( info, 'name' ) == 'require' then
-                return rawget( prev, 'source' );
+            if info.what == 'C' and info.name == 'require' then
+                return prev.source;
             end
             prev = info;
-            i = i + 1;
+            lv = lv + 1;
         end
     until info == nil;
 
@@ -139,13 +139,15 @@ local function hasImplicitSelfArg( method, info )
         local head, tail = info.linedefined, info.lastlinedefined;
         local lineno = 0;
         local src = {};
+        local idx = 0;
 
         for line in iolines( strsub( info.source, 2 ) ) do
             lineno = lineno + 1;
             if lineno > tail then
                 break;
             elseif lineno >= head then
-                rawset( src, #src + 1, line );
+                idx = idx + 1;
+                src[idx] = line;
             end
         end
 
@@ -190,7 +192,7 @@ local function getEnv( fn )
     else
         env = {};
         for k,v in pairs( getfenv( fn ) or {} ) do
-            rawset( env, k, v );
+            env[k] = v;
         end
     end
 

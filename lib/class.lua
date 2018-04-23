@@ -35,6 +35,7 @@ local mergeRight = require('halo.util').mergeRight;
 local setClass = require('halo.registry').setClass;
 local getClass = require('halo.registry').getClass;
 local type = type;
+local error = error;
 local assert = assert;
 local pairs = pairs;
 local ipairs = ipairs;
@@ -148,28 +149,25 @@ end
 
 
 local function defineMetamethod( target, name, fn )
-    local metamethod = rawget( target, 'metamethod' );
+    local metamethod = target.metamethod;
 
-    assert(
-        rawget( metamethod, name ) == nil,
-        ('metamethod %q is already defined'):format( name )
-    );
-    rawset( metamethod, name, fn );
+    if metamethod[name] ~= nil then
+        error( strformat( 'metamethod %q is already defined', name ) );
+    end
+
+    metamethod[name] = fn;
 end
 
 
 local function defineStaticMethod( static, name, fn, isMetamethod )
     if isMetamethod then
         defineMetamethod( static, name, fn );
+    elseif name == 'new' then
+        error( '"new" is reserved word');
     else
-        local method = rawget( static, 'method' );
-        local property = rawget( static, 'property' );
+        local method = static.method;
 
-        assert(
-            name ~= 'new',
-            ('%q is reserved word'):format( name )
-        );
-        checkNameConfliction( name, method, property );
+        checkNameConfliction( name, method, static.property );
         rawset( method, name, fn );
     end
 end
@@ -178,49 +176,48 @@ end
 local function defineInstanceMethod( instance, name, fn, isMetamethod )
     if isMetamethod then
         defineMetamethod( instance, name, fn );
+    elseif name == 'constructor' then
+        error( '"constructor" is reserved word' );
     else
-        local method = rawget( instance, 'method' );
-        local property = rawget( instance, 'property' );
+        local method = instance.method;
 
-        assert(
-            name ~= 'constructor',
-            ('%q is reserved word'):format( name )
-        );
-        checkNameConfliction( name, method, rawget( property, 'public' ) );
+        checkNameConfliction( name, method, instance.property.public );
         rawset( method, name, fn );
     end
 end
 
 
 local function defineInstanceProperty( instance, tbl )
-    local property = rawget( instance, 'property' );
-    local method = rawget( instance, 'method' );
-    local public = rawget( property, 'public' );
-    local protected = rawget( property, 'protected' );
-    local target;
+    local property = instance.property;
+    local method = instance.method;
+    local public = property.public;
+    local protected = property.protected;
 
     -- public, protected
     for scope, tbl in pairs( tbl ) do
-        target = rawget( property, scope );
-        assert(
-            target ~= nil,
-            ('unknown property type: %q'):format( scope )
-        );
+        local target = property[scope];
+
+        if not target then
+            error( strformat( 'unknown property type: %q', scope ) );
+        end
+
         for key, val in pairs( tbl ) do
-            assert(
-                type( key ) == 'string' or isFinite( key ),
-                'field name must be type of string or finite number'
-            );
-            assert(
-                key ~= 'constructor' or key ~= 'init',
-                ('%q is reserved word'):format( key )
-            );
+            if type( key ) ~= 'string' then
+                if not isFinite( key ) then
+                    error( 'field name must be string or finite number' );
+                end
+            elseif key == 'constructor' then
+                error( '"constructor" is reserved word' );
+            elseif key == 'init' then
+                error( '"init" is reserved word' );
+            end
+
             checkNameConfliction( key, public, protected, method );
             -- set field
             if type( val ) == 'table' then
-                rawset( target, key, cloneTable( val ) );
+                target[key] = cloneTable( val );
             else
-                rawset( target, key, val );
+                target[key] = val;
             end
         end
     end
@@ -230,24 +227,24 @@ end
 
 
 local function defineStaticProperty( static, tbl )
-    local property = rawget( static, 'property' );
-    local method = rawget( static, 'method' );
+    local property = static.property;
+    local method = static.method;
 
     for key, val in pairs( tbl ) do
-        assert(
-            type( key ) == 'string' or isFinite( key ),
-            'field name must be type of string or finite number'
-        );
-        assert(
-            key ~= 'new',
-            ('field name %q is reserved word'):format( key )
-        );
+        if type( key ) ~= 'string' then
+            if not isFinite( key ) then
+                error( 'field name must be string or finite number' );
+            end
+        elseif key == 'new' then
+            error( 'field name "new" is reserved word' )
+        end
+
         checkNameConfliction( key, property, method );
         -- set field
         if type( val ) == 'table' then
-            rawset( property, key, cloneTable( val ) );
+            property[key] = cloneTable( val );
         else
-            rawset( property, key, val );
+            property[key] = val;
         end
     end
 
@@ -314,6 +311,54 @@ local function replaceDeclUpvalue2Class( defs, decl, class )
 end
 
 
+-- declaration method table
+local function createDeclarator( defs )
+    local defined = {
+        inheritance = false,
+        static      = false,
+        instance    = false
+    };
+
+    return {
+        -- define inheritance
+        inherits = function( tbl )
+            -- cannot be defined twice
+            if defined.inheritance then
+                error( 'inheritance already defined' );
+            -- invalid argument
+            elseif type( tbl ) ~= 'table' then
+                error( 'inheritance must be type of table' );
+            end
+
+            defined.inheritance = defineInheritance( defs, tbl );
+        end,
+
+        -- define property
+        property = function( self, tbl )
+            local scope, proc;
+
+            -- define instance property with 'Class:property'
+            if tbl then
+                scope = 'instance';
+                proc = defineInstanceProperty;
+            -- define static property with 'Class.property'
+            else
+                scope = 'static';
+                proc = defineStaticProperty;
+                tbl = self;
+            end
+
+            if defined[scope] then
+                error( strformat( '%q property already defined', scope ) );
+            elseif type( tbl ) ~= 'table' then
+                error( 'property must be type of table' );
+            end
+            defined[scope] = proc( defs[scope], tbl );
+        end
+    };
+end
+
+
 local function declClass( _, className )
     local source = getinfo( 2, 'S' ).source;
     local pkgName = getPackageName();
@@ -332,12 +377,12 @@ local function declClass( _, className )
             metamethod = {}
         }
     };
-    local defined = {
-        inheritance = false,
-        static      = false,
-        instance    = false
-    };
     local exports;
+
+    -- check className
+    if type( className ) ~= 'string' then
+        error( 'class name must be string' );
+    end
 
     -- prepend package-name
     if pkgName then
@@ -346,60 +391,13 @@ local function declClass( _, className )
         pkgName = className;
     end
 
-    assert(
-        type( className ) == 'string',
-        'class name must be type of string'
-    );
     -- package.class already registered
-    assert(
-        getClass( pkgName ) == nil,
-        strformat( 'class %q already defined', className )
-    );
+    if getClass( pkgName ) then
+        error( strformat( 'class %q already defined', className ) );
+    end
 
     -- declaration method table
-    local DECLARATOR = {
-        -- define inheritance
-        inherits = function( tbl )
-            -- cannot be defined twice
-            assert(
-                rawget( defined, 'inheritance' ) == false,
-                'inheritance already defined'
-            );
-            -- invalid argument
-            assert(
-                type( tbl ) == 'table',
-                'inheritance must be type of table'
-            );
-            rawset( defined, 'inheritance', defineInheritance( defs, tbl ) );
-        end,
-
-        -- define property
-        property = function( self, tbl )
-            local scope, proc;
-
-            -- instance property
-            if tbl then
-                scope = 'instance';
-                proc = defineInstanceProperty;
-            -- static property
-            else
-                scope = 'static';
-                proc = defineStaticProperty;
-                tbl = self;
-            end
-
-            assert(
-                rawget( defined, scope ) == false,
-                strformat( '%q property already defined', scope )
-            );
-            assert(
-                type( tbl ) == 'table',
-                'property must be type of table'
-            );
-            rawset( defined, scope, proc( rawget( defs, scope ), tbl ) );
-        end
-    };
-
+    local DECLARATOR = createDeclarator( defs );
     -- return class declarator
     local decl = {};
     local class = {};
@@ -409,20 +407,18 @@ local function declClass( _, className )
         __metatable = 1,
         -- declare static methods by table
         __call = function( _, tbl )
-            assert(
-                type( tbl ) == 'table', 'method list must be type of table'
-            );
+            if type( tbl ) ~= 'table' then
+                error( 'method list must be table' );
+            end
 
             for name, fn in pairs( tbl ) do
                 assert(
                     not verifyMethod( name, fn ),
-                    ('%q is not type of static method'):format( name )
+                    strformat( '%q is not type of static method', name )
                 );
                 -- define static method
-                defineStaticMethod(
-                    rawget( defs, 'static' ), name, fn,
-                    name:find( PTN_METAMETHOD )
-                );
+                defineStaticMethod( defs.static, name, fn,
+                                    strfind( name, PTN_METAMETHOD ) );
             end
         end,
 
@@ -430,20 +426,22 @@ local function declClass( _, className )
         __index = function( _, name )
             if type( name ) == 'string' then
                 if name == 'exports' then
-                    assert(
-                        exports == nil,
-                        ('class %q already exported'):format( className )
-                    );
+                    if exports ~= nil then
+                        error(
+                            strformat( 'class %q already exported', className )
+                        );
+                    end
+
                     replaceDeclUpvalue2Class( defs, decl, class );
                     exports = setClass( class, source, pkgName, defs );
 
                     return exports;
                 end
 
-                return rawget( DECLARATOR, name );
+                return DECLARATOR[name];
             end
 
-            assert( false, ('%q is unknown declaration'):format( name ) );
+            error( strformat( '%q is unknown declaration', name ) );
         end,
 
         -- method declaration
@@ -459,10 +457,7 @@ local function declClass( _, className )
                 proc = defineStaticMethod;
             end
 
-            proc(
-                rawget( defs, scope ), name, fn,
-                name:find( PTN_METAMETHOD )
-            );
+            proc( defs[scope], name, fn, strfind( name, PTN_METAMETHOD ) );
         end
     });
 
