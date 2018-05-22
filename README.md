@@ -11,7 +11,8 @@ luarocks install --from=http://mah0x211.github.io/rocks/ halo
 
 ## Dependencies
 
-- lua-util https://github.com/mah0x211/lua-util
+- lua-dump https://github.com/mah0x211/lua-dump
+- lua-loadchunk https://github.com/mah0x211/lua-loadchunk
 
 
 ## Create Class
